@@ -1,0 +1,12 @@
+{
+  "tags": [
+    { "id": "prayer", "name": "Prayer", "color": "blue" },
+    { "id": "faith", "name": "Faith", "color": "green" },
+    { "id": "wisdom", "name": "Wisdom", "color": "purple" },
+    { "id": "love", "name": "Love", "color": "red" },
+    { "id": "hope", "name": "Hope", "color": "yellow" },
+    { "id": "grace", "name": "Grace", "color": "pink" },
+    { "id": "obedience", "name": "Obedience", "color": "indigo" },
+    { "id": "worship", "name": "Worship", "color": "orange" }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "plans": [
+    {
+      "id": "nt-90",
+      "name": "New Testament in 90 Days",
+      "description": "Read through the entire New Testament in 90 days with a manageable daily pace",
+      "type": "chronological",
+      "totalDays": 90,
+      "estimatedDuration": "3 months",
+      "readings": [
+        { "id": "nt-day-1", "day": 1, "passages": ["Matthew 1-4"], "studyTags": ["Beginnings", "Jesus"] },
+        { "id": "nt-day-2", "day": 2, "passages": ["Matthew 5-7"], "studyTags": ["Teaching", "Wisdom"] },
+        { "id": "nt-day-3", "day": 3, "passages": ["Matthew 8-10"], "studyTags": ["Miracles", "Faith"] },
+        { "id": "nt-day-4", "day": 4, "passages": ["Matthew 11-13"], "studyTags": ["Parables", "Kingdom"] },
+        { "id": "nt-day-5", "day": 5, "passages": ["Matthew 14-17"], "studyTags": ["Miracles", "Faith"] }
+      ]
+    },
+    {
+      "id": "psalms-proverbs",
+      "name": "Psalms & Proverbs Monthly",
+      "description": "Read one Psalm and one chapter of Proverbs each day for a month",
+      "type": "thematic",
+      "totalDays": 31,
+      "estimatedDuration": "1 month",
+      "readings": [
+        { "id": "pp-day-1", "day": 1, "passages": ["Psalm 1", "Proverbs 1"], "studyTags": ["Wisdom", "Prayer"] },
+        { "id": "pp-day-2", "day": 2, "passages": ["Psalm 2", "Proverbs 2"], "studyTags": ["Wisdom", "Prayer"] },
+        { "id": "pp-day-3", "day": 3, "passages": ["Psalm 3", "Proverbs 3"], "studyTags": ["Wisdom", "Prayer"] },
+        { "id": "pp-day-4", "day": 4, "passages": ["Psalm 4", "Proverbs 4"], "studyTags": ["Wisdom", "Prayer"] },
+        { "id": "pp-day-5", "day": 5, "passages": ["Psalm 5", "Proverbs 5"], "studyTags": ["Wisdom", "Prayer"] }
+      ]
+    }
+  ]
+}
