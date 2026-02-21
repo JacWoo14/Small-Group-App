@@ -1,32 +1,25 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Colors } from '../constants/theme';
-
-// Import placeholder screens
-import HomeScreen from '../screens/HomeScreen';
-import PlansScreen from '../screens/PlansScreen';
-import GroupsScreen from '../screens/GroupsScreen';
-import ProgressScreen from '../screens/ProgressScreen';
+import TodayScreen from '../screens/TodayScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import GroupStackNavigator from './GroupStackNavigator';
 
 const Tab = createBottomTabNavigator();
 
-/**
- * Main tab navigator - bottom tabs for primary app sections
- */
 export default function MainTabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={{
         headerStyle: {
-          backgroundColor: Colors.sacredGold,
+          backgroundColor: Colors.primary,
         },
         headerTintColor: Colors.white,
         headerTitleStyle: {
           fontWeight: 'bold',
         },
-        tabBarActiveTintColor: Colors.sacredGold,
-        tabBarInactiveTintColor: Colors.stoneGray,
+        tabBarActiveTintColor: Colors.primary,
+        tabBarInactiveTintColor: Colors.textSecondary,
         tabBarStyle: {
           backgroundColor: Colors.white,
           borderTopColor: Colors.border,
@@ -35,34 +28,17 @@ export default function MainTabNavigator() {
     >
       <Tab.Screen
         name="Today"
-        component={HomeScreen}
+        component={TodayScreen}
         options={{
           title: "Today's Reading",
-          // TODO: Add icon
-        }}
-      />
-      <Tab.Screen
-        name="Plans"
-        component={PlansScreen}
-        options={{
-          title: 'Reading Plans',
-          // TODO: Add icon
         }}
       />
       <Tab.Screen
         name="Groups"
-        component={GroupsScreen}
+        component={GroupStackNavigator}
         options={{
-          title: 'My Groups',
-          // TODO: Add icon
-        }}
-      />
-      <Tab.Screen
-        name="Progress"
-        component={ProgressScreen}
-        options={{
-          title: 'My Progress',
-          // TODO: Add icon
+          title: 'Groups',
+          headerShown: false, // GroupStackNavigator has its own header
         }}
       />
       <Tab.Screen
@@ -70,7 +46,6 @@ export default function MainTabNavigator() {
         component={SettingsScreen}
         options={{
           title: 'Settings',
-          // TODO: Add icon
         }}
       />
     </Tab.Navigator>

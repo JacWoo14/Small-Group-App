@@ -1,46 +1,138 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Colors, Typography, Layout } from '../constants/theme';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { useAuth } from '../context/AuthContext';
+import { updateNotificationTime, signOut } from '../services/auth';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { TimePicker } from '../components/TimePicker';
+import { Colors, Typography, Spacing } from '../constants/theme';
 
-/**
- * Settings Screen - App settings and preferences
- * TODO: Migrate from reference project app/settings/page.tsx
- */
 export default function SettingsScreen() {
+  const { user, setUser } = useAuth();
+  const [loading, setLoading] = useState(false);
+
+  if (!user) return null;
+
+  // Parse current notification time to Date object
+  const [hours, minutes] = user.preferred_notification_time.split(':');
+  const currentTime = new Date();
+  currentTime.setHours(parseInt(hours), parseInt(minutes));
+
+  async function handleTimeChange(selectedTime: Date) {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      const hours = selectedTime.getHours().toString().padStart(2, '0');
+      const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
+      const timeString = `${hours}:${minutes}:00`;
+
+      await updateNotificationTime(user.id, timeString);
+
+      // Update local state
+      setUser({
+        ...user,
+        preferred_notification_time: timeString,
+      });
+
+      Alert.alert('Success', 'Notification time updated!');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update time');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSignOut() {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await signOut();
+          } catch (error: any) {
+            Alert.alert('Error', error.message || 'Failed to sign out');
+          }
+        },
+      },
+    ]);
+  }
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Settings</Text>
-      <Text style={styles.subtitle}>Coming soon...</Text>
-      <Text style={styles.text}>
-        This screen will show:{'\n'}
-        • Notification settings{'\n'}
-        • Daily reminder time{'\n'}
-        • User profile{'\n'}
-        • Import/Export data{'\n'}
-        • Reset progress{'\n'}
-        • About & Help
-      </Text>
-    </View>
+    <ScrollView style={styles.container}>
+      <Card style={styles.card}>
+        <Text style={styles.cardTitle}>Notifications</Text>
+        <TimePicker
+          label="Daily reminder time"
+          value={currentTime}
+          onChange={handleTimeChange}
+        />
+        <Text style={styles.hint}>
+          You'll receive a daily reminder at this time
+        </Text>
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.cardTitle}>Profile</Text>
+        <View style={styles.row}>
+          <Text style={styles.label}>Name</Text>
+          <Text style={styles.value}>{user.display_name}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>Email</Text>
+          <Text style={styles.value}>{user.email}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>Timezone</Text>
+          <Text style={styles.value}>{user.timezone}</Text>
+        </View>
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.cardTitle}>Account</Text>
+        <Button
+          title="Sign Out"
+          variant="outline"
+          onPress={handleSignOut}
+        />
+      </Card>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.parchment,
-    padding: Layout.screenPadding,
+    backgroundColor: '#f5f5f5',
+    paddingTop: Spacing.md,
   },
-  title: {
-    ...Typography.h2,
-    marginBottom: 8,
+  card: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
   },
-  subtitle: {
-    ...Typography.h4,
-    color: Colors.stoneGray,
-    marginBottom: 24,
+  cardTitle: {
+    ...Typography.h3,
+    color: Colors.text,
+    marginBottom: Spacing.md,
   },
-  text: {
+  label: {
+    ...Typography.label,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  value: {
     ...Typography.body,
-    lineHeight: 24,
+    color: Colors.text,
+    marginBottom: Spacing.md,
+  },
+  hint: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    marginTop: Spacing.xs,
+  },
+  row: {
+    marginBottom: Spacing.md,
   },
 });

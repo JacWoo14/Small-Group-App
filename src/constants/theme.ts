@@ -38,6 +38,10 @@ export const Colors = {
   // Border colors
   border: '#E0DDD5',
   borderLight: '#F0EDE5',
+
+  // Convenience aliases
+  primary: '#C4941D',     // same as sacredGold
+  text: '#2A2A2A',        // same as textPrimary
 };
 
 export const Spacing = {
@@ -52,6 +56,7 @@ export const Spacing = {
 export const BorderRadius = {
   sm: 4,
   md: 8,
+  medium: 8, // alias for md
   lg: 12,
   xl: 16,
   round: 999,
@@ -156,6 +161,12 @@ export const Typography = {
     fontWeight: FontWeights.semibold,
     color: Colors.white,
     lineHeight: FontSizes.md * 1.2,
+  },
+  label: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.textPrimary,
+    lineHeight: FontSizes.sm * 1.4,
   },
   link: {
     fontSize: FontSizes.md,
