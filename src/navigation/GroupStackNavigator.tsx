@@ -6,6 +6,7 @@ import GroupsScreen from '../screens/groups/GroupsScreen';
 import CreateGroupScreen from '../screens/groups/CreateGroupScreen';
 import JoinGroupScreen from '../screens/groups/JoinGroupScreen';
 import GroupDetailsScreen from '../screens/groups/GroupDetailsScreen';
+import ImportPlanScreen from '../screens/groups/ImportPlanScreen';
 
 const Stack = createNativeStackNavigator<GroupStackParamList>();
 
@@ -37,6 +38,11 @@ export default function GroupStackNavigator() {
         name="JoinGroup"
         component={JoinGroupScreen}
         options={{ title: 'Join Group' }}
+      />
+      <Stack.Screen
+        name="ImportPlan"
+        component={ImportPlanScreen}
+        options={{ title: 'Import Plan' }}
       />
     </Stack.Navigator>
   );

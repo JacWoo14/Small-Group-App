@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Colors } from '../constants/theme';
 import TodayScreen from '../screens/TodayScreen';
+import ProgressScreen from '../screens/ProgressScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import GroupStackNavigator from './GroupStackNavigator';
 
@@ -39,6 +40,13 @@ export default function MainTabNavigator() {
         options={{
           title: 'Groups',
           headerShown: false, // GroupStackNavigator has its own header
+        }}
+      />
+      <Tab.Screen
+        name="Progress"
+        component={ProgressScreen}
+        options={{
+          title: 'Progress',
         }}
       />
       <Tab.Screen

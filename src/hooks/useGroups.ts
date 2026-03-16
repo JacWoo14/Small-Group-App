@@ -7,8 +7,10 @@ import {
   createGroup,
   joinGroup,
   leaveGroup,
+  changeGroupPlan,
 } from '../services/groups';
 import { getTodaysReadings, markComplete } from '../services/completions';
+import { importReadingPlan, ParsedReading } from '../services/plans';
 
 export function useUserGroups() {
   const { user } = useAuth();
@@ -40,9 +42,12 @@ export function useTodaysReadings() {
 }
 
 export function useAvailablePlans() {
+  const { user } = useAuth();
+
   return useQuery({
-    queryKey: ['readingPlans'],
-    queryFn: getAvailablePlans,
+    queryKey: ['readingPlans', user?.id],
+    queryFn: () => getAvailablePlans(user!.id),
+    enabled: !!user,
     staleTime: 60 * 60 * 1000, // 1 hour
   });
 }
@@ -97,6 +102,32 @@ export function useMarkComplete() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['todaysReadings', user?.id] });
       queryClient.invalidateQueries({ queryKey: ['group', variables.groupId] });
+      queryClient.invalidateQueries({ queryKey: ['streak', user?.id] });
+    },
+  });
+}
+
+export function useImportPlan() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: (params: { name: string; readings: ParsedReading[] }) =>
+      importReadingPlan(params.name, params.readings, user!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['readingPlans', user?.id] });
+    },
+  });
+}
+
+export function useChangeGroupPlan(groupId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (newPlanId: string) => changeGroupPlan(groupId, newPlanId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['group', groupId] });
+      queryClient.invalidateQueries({ queryKey: ['todaysReadings'] });
     },
   });
 }

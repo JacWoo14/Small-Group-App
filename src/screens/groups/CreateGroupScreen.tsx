@@ -120,6 +120,13 @@ export default function CreateGroupScreen() {
           ))
         )}
 
+        <TouchableOpacity
+          onPress={() => navigation.navigate('ImportPlan')}
+          style={styles.importLink}
+        >
+          <Text style={styles.importLinkText}>+ Import a custom plan</Text>
+        </TouchableOpacity>
+
         <DatePicker
           label="Start Date"
           value={startDate}
@@ -154,6 +161,14 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.textSecondary,
     marginBottom: Spacing.md,
+  },
+  importLink: {
+    marginBottom: Spacing.md,
+    paddingVertical: Spacing.xs,
+  },
+  importLinkText: {
+    ...Typography.body,
+    color: Colors.primary,
   },
   planOption: {
     backgroundColor: Colors.white,

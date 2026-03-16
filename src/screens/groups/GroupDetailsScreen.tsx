@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,13 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useGroupDetails, useLeaveGroup } from '../../hooks/useGroups';
+import { useGroupDetails, useLeaveGroup, useChangeGroupPlan, useAvailablePlans } from '../../hooks/useGroups';
+import { useYesterdayRecap } from '../../hooks/useProgress';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Colors, Typography, Spacing } from '../../constants/theme';
-import { GroupStackParamList, GroupMemberDetails } from '../../types';
+import { GroupStackParamList, GroupMemberDetails, ReadingPlan } from '../../types';
 import { format } from 'date-fns';
 
 type RouteProps = NativeStackScreenProps<GroupStackParamList, 'GroupDetails'>['route'];
@@ -28,7 +29,11 @@ export default function GroupDetailsScreen() {
   const { user } = useAuth();
   const { groupId } = route.params;
   const { data: group, isLoading, error } = useGroupDetails(groupId);
+  const { data: recap } = useYesterdayRecap(groupId);
   const leaveGroup = useLeaveGroup();
+  const changeGroupPlan = useChangeGroupPlan(groupId);
+  const { data: availablePlans } = useAvailablePlans();
+  const [isChangingPlan, setIsChangingPlan] = useState(false);
 
   async function handleCopyCode() {
     if (group?.invite_code) {
@@ -77,6 +82,28 @@ export default function GroupDetailsScreen() {
 
   const members = group.members || [];
   const completedCount = members.filter((m) => m.completed_today).length;
+  const isCreator = group.created_by === user?.id;
+
+  async function handleChangePlan(plan: ReadingPlan) {
+    Alert.alert(
+      'Change Plan',
+      `Switch to "${plan.name}"? Members will see the new plan's readings starting today.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Change',
+          onPress: async () => {
+            try {
+              await changeGroupPlan.mutateAsync(plan.id);
+              setIsChangingPlan(false);
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to change plan');
+            }
+          },
+        },
+      ]
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -85,8 +112,33 @@ export default function GroupDetailsScreen() {
         <Text style={styles.cardTitle}>{group.name}</Text>
         {group.reading_plan && (
           <View style={styles.row}>
-            <Text style={styles.label}>Plan</Text>
+            <View style={styles.planHeader}>
+              <Text style={styles.label}>Plan</Text>
+              {isCreator && (
+                <TouchableOpacity onPress={() => setIsChangingPlan(!isChangingPlan)}>
+                  <Text style={styles.changeLink}>
+                    {isChangingPlan ? 'Cancel' : 'Change'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <Text style={styles.value}>{group.reading_plan.name}</Text>
+            {isChangingPlan && (
+              <View style={styles.planPicker}>
+                {(availablePlans || [])
+                  .filter((p) => p.id !== group.reading_plan_id)
+                  .map((plan: ReadingPlan) => (
+                    <TouchableOpacity
+                      key={plan.id}
+                      style={styles.planOption}
+                      onPress={() => handleChangePlan(plan)}
+                    >
+                      <Text style={styles.planOptionName}>{plan.name}</Text>
+                      <Text style={styles.planOptionDays}>{plan.total_days} days</Text>
+                    </TouchableOpacity>
+                  ))}
+              </View>
+            )}
           </View>
         )}
         <View style={styles.row}>
@@ -128,6 +180,33 @@ export default function GroupDetailsScreen() {
         ))}
       </Card>
 
+      {/* Yesterday's Recap */}
+      <Card style={styles.card}>
+        <Text style={styles.cardTitle}>Yesterday's Reading</Text>
+        {!recap || recap.completions.length === 0 ? (
+          <Text style={styles.recapEmpty}>
+            No data yet — check back tomorrow!
+          </Text>
+        ) : (
+          recap.completions.map((member) => (
+            <View key={member.user_id} style={styles.memberRow}>
+              <Text style={styles.memberName}>
+                {member.display_name}
+                {member.user_id === user?.id ? ' (you)' : ''}
+              </Text>
+              <Text
+                style={[
+                  styles.memberStatus,
+                  member.completed ? styles.completedStatus : styles.missedStatus,
+                ]}
+              >
+                {member.completed ? '✓' : '—'}
+              </Text>
+            </View>
+          ))
+        )}
+      </Card>
+
       {/* Leave Group */}
       <Card style={styles.card}>
         <Button
@@ -163,6 +242,36 @@ const styles = StyleSheet.create({
   },
   row: {
     marginBottom: Spacing.sm,
+  },
+  planHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  changeLink: {
+    ...Typography.caption,
+    color: Colors.primary,
+    fontWeight: '600',
+  },
+  planPicker: {
+    marginTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
+    paddingTop: Spacing.sm,
+  },
+  planOption: {
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  planOptionName: {
+    ...Typography.body,
+    color: Colors.text,
+  },
+  planOptionDays: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
   },
   label: {
     ...Typography.caption,
@@ -212,6 +321,14 @@ const styles = StyleSheet.create({
   pendingStatus: {
     color: Colors.textTertiary,
     backgroundColor: '#F5F5F5',
+  },
+  missedStatus: {
+    color: Colors.textTertiary,
+    backgroundColor: '#F5F5F5',
+  },
+  recapEmpty: {
+    ...Typography.body,
+    color: Colors.textSecondary,
   },
   errorText: {
     ...Typography.body,

@@ -69,17 +69,19 @@ export default function TodayScreen() {
         readings.map((reading: TodayReading) => (
           <Card key={reading.group.id} style={styles.readingCard}>
             <Text style={styles.groupLabel}>{reading.group.name}</Text>
-            <Text style={styles.dayNumber}>
-              Day {reading.day_number}
-              {reading.group.reading_plan
-                ? ` of ${reading.group.reading_plan.total_days}`
-                : ''}
-            </Text>
+            {reading.day_number != null && (
+              <Text style={styles.dayNumber}>
+                Day {reading.day_number}
+                {reading.group.reading_plan
+                  ? ` of ${reading.group.reading_plan.total_days}`
+                  : ''}
+              </Text>
+            )}
 
             {reading.passages.length > 0 ? (
               reading.passages.map((passage: Passage, index: number) => (
                 <Text key={index} style={styles.passage}>
-                  {passage.book} {passage.chapters || passage.chapter}
+                  {passage}
                 </Text>
               ))
             ) : (
