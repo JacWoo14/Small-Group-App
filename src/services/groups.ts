@@ -173,13 +173,33 @@ export async function getAvailablePlans(userId: string): Promise<ReadingPlan[]> 
 }
 
 /**
- * Change a group's reading plan (creator only — enforced by RLS)
+ * Transfer group ownership to another member (creator only — enforced by RLS).
+ * The new owner must be an active member of the group.
  */
-export async function changeGroupPlan(groupId: string, newPlanId: string): Promise<void> {
+export async function transferGroupOwnership(
+  groupId: string,
+  newOwnerId: string
+): Promise<void> {
   const { error } = await supabase
     .from('groups')
-    .update({ reading_plan_id: newPlanId })
+    .update({ created_by: newOwnerId })
     .eq('id', groupId);
 
   if (error) throw error;
+}
+
+/**
+ * Change a group's reading plan (creator only — enforced by RLS)
+ */
+export async function changeGroupPlan(groupId: string, newPlanId: string): Promise<void> {
+  const { data, error } = await supabase
+    .from('groups')
+    .update({ reading_plan_id: newPlanId })
+    .eq('id', groupId)
+    .select('id');
+
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('Update blocked — you may not have permission to change this group\'s plan.');
+  }
 }

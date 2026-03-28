@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -19,10 +19,12 @@ export default function TodayScreen() {
   const { user } = useAuth();
   const { data: readings, isLoading, error } = useTodaysReadings();
   const markComplete = useMarkComplete();
+  const [submittingGroupId, setSubmittingGroupId] = useState<string | null>(null);
 
   const today = format(new Date(), 'yyyy-MM-dd');
 
   async function handleMarkComplete(reading: TodayReading) {
+    setSubmittingGroupId(reading.group.id);
     try {
       await markComplete.mutateAsync({
         groupId: reading.group.id,
@@ -35,6 +37,8 @@ export default function TodayScreen() {
       } else {
         Alert.alert('Error', error.message || 'Failed to mark complete');
       }
+    } finally {
+      setSubmittingGroupId(null);
     }
   }
 
@@ -91,8 +95,8 @@ export default function TodayScreen() {
             <Button
               title={reading.completed ? 'Completed' : 'Mark Complete'}
               onPress={() => handleMarkComplete(reading)}
-              disabled={reading.completed || markComplete.isPending}
-              loading={markComplete.isPending}
+              disabled={reading.completed || submittingGroupId === reading.group.id}
+              loading={submittingGroupId === reading.group.id}
               style={styles.button}
             />
           </Card>

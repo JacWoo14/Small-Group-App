@@ -8,6 +8,7 @@ import {
   joinGroup,
   leaveGroup,
   changeGroupPlan,
+  transferGroupOwnership,
 } from '../services/groups';
 import { getTodaysReadings, markComplete } from '../services/completions';
 import { importReadingPlan, ParsedReading } from '../services/plans';
@@ -128,6 +129,17 @@ export function useChangeGroupPlan(groupId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['group', groupId] });
       queryClient.invalidateQueries({ queryKey: ['todaysReadings'] });
+    },
+  });
+}
+
+export function useTransferGroupOwnership(groupId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (newOwnerId: string) => transferGroupOwnership(groupId, newOwnerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['group', groupId] });
     },
   });
 }

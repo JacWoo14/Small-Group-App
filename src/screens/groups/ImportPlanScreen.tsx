@@ -7,25 +7,40 @@ import {
   Alert,
   TextInput,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { parsePlanText, ParsedReading } from '../../services/plans';
-import { useImportPlan } from '../../hooks/useGroups';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import {
+  parsePlanText,
+  parseDatelessPlanText,
+  detectPlanFormat,
+  ParsedReading,
+} from '../../services/plans';
+import { useImportPlan, useAvailablePlans } from '../../hooks/useGroups';
+import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
+import { DatePicker } from '../../components/DatePicker';
 import { Colors, Typography, Spacing } from '../../constants/theme';
 import { GroupStackParamList } from '../../types';
+import { format } from 'date-fns';
 
 type Nav = NativeStackNavigationProp<GroupStackParamList, 'ImportPlan'>;
+type RouteProps = NativeStackScreenProps<GroupStackParamList, 'ImportPlan'>['route'];
 
 export default function ImportPlanScreen() {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<RouteProps>();
+  const { groupId } = route.params ?? {};
+  const { user } = useAuth();
   const importPlan = useImportPlan();
+  const { data: availablePlans } = useAvailablePlans();
 
   const [planName, setPlanName] = useState('');
   const [pastedText, setPastedText] = useState('');
+  const [startDate, setStartDate] = useState(new Date());
   const [preview, setPreview] = useState<ParsedReading[] | null>(null);
+  const [isDateless, setIsDateless] = useState(false);
 
   function handlePreview() {
     if (!planName.trim()) {
@@ -37,15 +52,64 @@ export default function ImportPlanScreen() {
       return;
     }
 
-    const parsed = parsePlanText(pastedText);
-    if (!parsed) {
+    // Check for duplicate plan name (case-insensitive)
+    const nameNormalized = planName.trim().toLowerCase();
+    const duplicate = (availablePlans || []).find(
+      (p) => p.name.toLowerCase() === nameNormalized && p.created_by === user?.id
+    );
+    if (duplicate) {
       Alert.alert(
-        'Could not parse',
-        'Each line must be in the format: "Passage\tDate" (tab-separated). Example:\nGenesis 1\t3-16-2026'
+        'Plan already exists',
+        `You already have a plan named "${duplicate.name}". Import anyway?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Import anyway', onPress: () => doParse() },
+        ]
       );
       return;
     }
 
+    doParse();
+  }
+
+  function doParse() {
+    const format = detectPlanFormat(pastedText);
+
+    if (format === 'mixed') {
+      Alert.alert(
+        'Mixed format',
+        'Some lines have dates and some do not. Please make sure all lines either include a date (tab-separated) or none do.'
+      );
+      return;
+    }
+
+    if (format === 'dateless') {
+      // Show the start date picker — user must confirm before previewing
+      setIsDateless(true);
+      return;
+    }
+
+    // Dated format
+    const parsed = parsePlanText(pastedText);
+    if (!parsed) {
+      Alert.alert(
+        'Could not parse',
+        'Each line must be: "Passage\tDate" (tab-separated).\nExample: Genesis 1\t3-16-2026\n\nMake sure all dates are valid calendar dates.'
+      );
+      return;
+    }
+
+    setPreview(parsed);
+    setIsDateless(false);
+  }
+
+  function handleDatelessContinue() {
+    const startDateStr = format(startDate, 'yyyy-MM-dd');
+    const parsed = parseDatelessPlanText(pastedText, startDateStr);
+    if (!parsed) {
+      Alert.alert('Error', 'Could not compute dates. Please check your input.');
+      return;
+    }
     setPreview(parsed);
   }
 
@@ -54,14 +118,23 @@ export default function ImportPlanScreen() {
 
     try {
       await importPlan.mutateAsync({ name: planName.trim(), readings: preview });
-      Alert.alert('Plan imported!', `"${planName}" is ready to use when creating a group.`, [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      if (groupId) {
+        navigation.navigate('GroupDetails', { groupId });
+      } else {
+        Alert.alert('Plan imported!', `"${planName}" is ready to use when creating a group.`, [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+      }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to import plan');
+      if (error.code === '23505') {
+        Alert.alert('Plan already exists', `You already have a plan named "${planName.trim()}". Please use a different name.`);
+      } else {
+        Alert.alert('Error', error.message || 'Failed to import plan');
+      }
     }
   }
 
+  // Preview screen
   if (preview) {
     return (
       <ScrollView style={styles.container}>
@@ -85,7 +158,7 @@ export default function ImportPlanScreen() {
           <Button
             title="Back to Edit"
             variant="outline"
-            onPress={() => setPreview(null)}
+            onPress={() => { setPreview(null); setIsDateless(false); }}
             style={styles.button}
           />
         </View>
@@ -93,6 +166,41 @@ export default function ImportPlanScreen() {
     );
   }
 
+  // Dateless: show start date picker before preview
+  if (isDateless) {
+    return (
+      <ScrollView style={styles.container}>
+        <View style={styles.content}>
+          <Text style={styles.sectionLabel}>Plan: {planName}</Text>
+          <Text style={styles.hint}>
+            No dates were found in your plan. Choose a start date and each reading
+            will be assigned a consecutive day starting from that date.
+          </Text>
+
+          <DatePicker
+            label="Start Date (Day 1)"
+            value={startDate}
+            onChange={setStartDate}
+            minimumDate={new Date()}
+          />
+
+          <Button
+            title="Preview Plan"
+            onPress={handleDatelessContinue}
+            style={styles.button}
+          />
+          <Button
+            title="Back"
+            variant="outline"
+            onPress={() => setIsDateless(false)}
+            style={styles.button}
+          />
+        </View>
+      </ScrollView>
+    );
+  }
+
+  // Default: paste screen
   return (
     <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.content}>
@@ -105,9 +213,13 @@ export default function ImportPlanScreen() {
 
         <Text style={styles.sectionLabel}>Reading Data</Text>
         <Text style={styles.hint}>
-          Paste your plan with one reading per line, tab-separated with the date:
-          {'\n'}Genesis 1{'  '}3-16-2026
-          {'\n'}Genesis 2{'  '}3-17-2026
+          Paste your plan with one reading per line.{'\n\n'}
+          <Text style={styles.hintBold}>With dates</Text> (tab-separated):{'\n'}
+          Genesis 1{'  '}3-16-2026{'\n'}
+          Genesis 2{'  '}3-17-2026{'\n\n'}
+          <Text style={styles.hintBold}>Without dates</Text> (daily, sequential):{'\n'}
+          Genesis 1{'\n'}
+          Genesis 2
         </Text>
 
         <TextInput
@@ -149,6 +261,10 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: Spacing.sm,
     lineHeight: 18,
+  },
+  hintBold: {
+    fontWeight: '600',
+    color: Colors.text,
   },
   pasteArea: {
     backgroundColor: Colors.white,

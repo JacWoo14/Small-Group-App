@@ -127,12 +127,8 @@ export default function CreateGroupScreen() {
           <Text style={styles.importLinkText}>+ Import a custom plan</Text>
         </TouchableOpacity>
 
-        <DatePicker
-          label="Start Date"
-          value={startDate}
-          onChange={setStartDate}
-          minimumDate={new Date()}
-        />
+        {/* start_date is only meaningful for day-numbered plans.
+            Date-first plans have dates baked into plan_readings already. */}
 
         <Button
           title="Create Group"

@@ -223,5 +223,5 @@ export type GroupStackParamList = {
   GroupDetails: { groupId: string };
   CreateGroup: undefined;
   JoinGroup: undefined;
-  ImportPlan: undefined;
+  ImportPlan: { groupId?: string };
 };

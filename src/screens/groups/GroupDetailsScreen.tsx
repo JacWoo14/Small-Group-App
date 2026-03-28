@@ -11,7 +11,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useGroupDetails, useLeaveGroup, useChangeGroupPlan, useAvailablePlans } from '../../hooks/useGroups';
+import { useGroupDetails, useLeaveGroup, useChangeGroupPlan, useAvailablePlans, useTransferGroupOwnership } from '../../hooks/useGroups';
 import { useYesterdayRecap } from '../../hooks/useProgress';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -32,8 +32,10 @@ export default function GroupDetailsScreen() {
   const { data: recap } = useYesterdayRecap(groupId);
   const leaveGroup = useLeaveGroup();
   const changeGroupPlan = useChangeGroupPlan(groupId);
+  const transferOwnership = useTransferGroupOwnership(groupId);
   const { data: availablePlans } = useAvailablePlans();
   const [isChangingPlan, setIsChangingPlan] = useState(false);
+  const [isTransferringOwnership, setIsTransferringOwnership] = useState(false);
 
   async function handleCopyCode() {
     if (group?.invite_code) {
@@ -43,9 +45,12 @@ export default function GroupDetailsScreen() {
   }
 
   function handleLeave() {
+    const creatorWarning = isCreator
+      ? '\n\nYou are the group creator. If you leave without transferring ownership, no one will be able to change the reading plan.'
+      : '';
     Alert.alert(
       'Leave Group',
-      `Are you sure you want to leave "${group?.name}"?`,
+      `Are you sure you want to leave "${group?.name}"?${creatorWarning}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -62,6 +67,15 @@ export default function GroupDetailsScreen() {
         },
       ]
     );
+  }
+
+  async function handleTransferOwnership(newOwnerId: string) {
+    try {
+      await transferOwnership.mutateAsync(newOwnerId);
+      setIsTransferringOwnership(false);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to transfer ownership');
+    }
   }
 
   if (isLoading) {
@@ -85,24 +99,12 @@ export default function GroupDetailsScreen() {
   const isCreator = group.created_by === user?.id;
 
   async function handleChangePlan(plan: ReadingPlan) {
-    Alert.alert(
-      'Change Plan',
-      `Switch to "${plan.name}"? Members will see the new plan's readings starting today.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Change',
-          onPress: async () => {
-            try {
-              await changeGroupPlan.mutateAsync(plan.id);
-              setIsChangingPlan(false);
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to change plan');
-            }
-          },
-        },
-      ]
-    );
+    try {
+      await changeGroupPlan.mutateAsync(plan.id);
+      setIsChangingPlan(false);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to change plan');
+    }
   }
 
   return (
@@ -137,6 +139,14 @@ export default function GroupDetailsScreen() {
                       <Text style={styles.planOptionDays}>{plan.total_days} days</Text>
                     </TouchableOpacity>
                   ))}
+                <TouchableOpacity
+                  style={styles.planOption}
+                  onPress={() => navigation.navigate('ImportPlan', { groupId })}
+                >
+                  <Text style={[styles.planOptionName, { color: Colors.primary }]}>
+                    + Import a new plan
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -179,6 +189,38 @@ export default function GroupDetailsScreen() {
           </View>
         ))}
       </Card>
+
+      {/* Transfer Ownership (creator only) */}
+      {isCreator && (
+        <Card style={styles.card}>
+          <View style={styles.planHeader}>
+            <Text style={styles.cardTitle}>Ownership</Text>
+            {members.filter((m) => m.user_id !== user?.id).length > 0 && (
+              <TouchableOpacity onPress={() => setIsTransferringOwnership(!isTransferringOwnership)}>
+                <Text style={styles.changeLink}>
+                  {isTransferringOwnership ? 'Cancel' : 'Transfer'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <Text style={styles.value}>You are the group creator</Text>
+          {isTransferringOwnership && (
+            <View style={styles.planPicker}>
+              {members
+                .filter((m) => m.user_id !== user?.id)
+                .map((member: GroupMemberDetails) => (
+                  <TouchableOpacity
+                    key={member.user_id}
+                    style={styles.planOption}
+                    onPress={() => handleTransferOwnership(member.user_id)}
+                  >
+                    <Text style={styles.planOptionName}>{member.display_name}</Text>
+                  </TouchableOpacity>
+                ))}
+            </View>
+          )}
+        </Card>
+      )}
 
       {/* Yesterday's Recap */}
       <Card style={styles.card}>

@@ -4,30 +4,23 @@ import { StreakData, GroupRecap } from '../types';
 import { format, subDays, differenceInCalendarDays, parseISO } from 'date-fns';
 
 /**
- * Calculate a user's current and longest reading streak across all groups.
- * A streak day counts if the user completed ANY group's reading on that date.
+ * Pure function: given a list of completion date strings (YYYY-MM-DD, any order),
+ * calculate current and longest streaks relative to a reference date.
+ * Exported for testing.
  */
-export async function getUserStreak(userId: string): Promise<StreakData> {
-  const { data, error } = await supabase
-    .from('reading_completions')
-    .select('reading_date')
-    .eq('user_id', userId)
-    .order('reading_date', { ascending: false });
+export function calculateStreakFromDates(
+  dates: string[],
+  today: string = format(new Date(), 'yyyy-MM-dd')
+): StreakData {
+  if (dates.length === 0) return { current: 0, longest: 0 };
 
-  if (error) throw error;
-  if (!data || data.length === 0) return { current: 0, longest: 0 };
+  // Deduplicate and sort descending
+  const uniqueDates = Array.from(new Set(dates)).sort((a, b) => b.localeCompare(a));
 
-  // Deduplicate dates (user may have multiple groups on one day)
-  const uniqueDates = Array.from(
-    new Set(data.map((r: any) => r.reading_date as string))
-  ).sort((a, b) => b.localeCompare(a)); // descending
+  const yesterday = format(subDays(parseISO(today), 1), 'yyyy-MM-dd');
 
   // --- Current streak ---
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
-
   let current = 0;
-  // Start from today if read today, otherwise from yesterday
   const startDate = uniqueDates[0] === today ? today : yesterday;
 
   if (uniqueDates[0] === today || uniqueDates[0] === yesterday) {
@@ -43,7 +36,6 @@ export async function getUserStreak(userId: string): Promise<StreakData> {
   }
 
   // --- Longest streak ---
-  // Work with dates ascending for this calculation
   const ascending = [...uniqueDates].sort((a, b) => a.localeCompare(b));
   let longest = 0;
   let runLength = 1;
@@ -60,7 +52,6 @@ export async function getUserStreak(userId: string): Promise<StreakData> {
       runLength = 1;
     }
   }
-  // Handle single-entry edge case
   if (ascending.length === 1) longest = 1;
   if (current > longest) longest = current;
 
@@ -68,17 +59,53 @@ export async function getUserStreak(userId: string): Promise<StreakData> {
 }
 
 /**
+ * Calculate a user's current and longest reading streak across all groups.
+ * A streak day counts if the user completed ANY group's reading on that date.
+ */
+export async function getUserStreak(userId: string): Promise<StreakData> {
+  const { data, error } = await supabase
+    .from('reading_completions')
+    .select('reading_date')
+    .eq('user_id', userId)
+    .order('reading_date', { ascending: false });
+
+  if (error) throw error;
+  if (!data || data.length === 0) return { current: 0, longest: 0 };
+
+  const dates = data.map((r: any) => r.reading_date as string);
+  return calculateStreakFromDates(dates);
+}
+
+/**
  * Get yesterday's recap for a group — who completed and who didn't.
+ * Returns empty completions if the group was created today or yesterday
+ * (not enough history to show a meaningful recap).
  */
 export async function getYesterdayGroupRecap(groupId: string): Promise<GroupRecap> {
   const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
 
-  // Get all active members
+  // Get group created_at to detect newly created groups
+  const { data: group, error: groupError } = await supabase
+    .from('groups')
+    .select('created_at')
+    .eq('id', groupId)
+    .single();
+
+  if (groupError) throw groupError;
+
+  // If the group was created on or after yesterday, there's no meaningful recap
+  const groupCreatedDate = format(parseISO(group.created_at), 'yyyy-MM-dd');
+  if (groupCreatedDate >= yesterday) {
+    return { date: yesterday, total_members: 0, completions: [] };
+  }
+
+  // Get active members who joined before yesterday (new members excluded from recap)
   const { data: members, error: membersError } = await supabase
     .from('group_members')
-    .select('user_id, user:users(display_name)')
+    .select('user_id, joined_at, user:users(display_name)')
     .eq('group_id', groupId)
-    .eq('is_active', true);
+    .eq('is_active', true)
+    .lt('joined_at', yesterday + 'T00:00:00');
 
   if (membersError) throw membersError;
 
