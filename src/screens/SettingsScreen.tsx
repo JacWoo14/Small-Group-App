@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { updateNotificationTime, signOut } from '../services/auth';
+import { getNotificationPermissionStatus, registerForPushNotifications } from '../services/notifications';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { TimePicker } from '../components/TimePicker';
@@ -10,6 +11,33 @@ import { Colors, Typography, Spacing } from '../constants/theme';
 export default function SettingsScreen() {
   const { user, setUser } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'undetermined' | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getNotificationPermissionStatus().then((s) => { if (mounted) setPermissionStatus(s); });
+    return () => { mounted = false; };
+  }, []);
+
+  async function handleEnableNotifications() {
+    if (!user) return;
+    setLoading(true);
+    try {
+      await registerForPushNotifications(user.id);
+      const status = await getNotificationPermissionStatus();
+      setPermissionStatus(status);
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Please enable notifications in your device settings.'
+        );
+      }
+    } catch {
+      // Ignore — token save failures are non-critical
+    } finally {
+      setLoading(false);
+    }
+  }
 
   if (!user) return null;
 
@@ -64,14 +92,30 @@ export default function SettingsScreen() {
     <ScrollView style={styles.container}>
       <Card style={styles.card}>
         <Text style={styles.cardTitle}>Notifications</Text>
-        <TimePicker
-          label="Daily reminder time"
-          value={currentTime}
-          onChange={handleTimeChange}
-        />
-        <Text style={styles.hint}>
-          You'll receive a daily reminder at this time
-        </Text>
+        {permissionStatus === 'denied' ? (
+          <>
+            <Text style={styles.permissionDenied}>
+              Notifications are disabled. Enable them in your device settings to receive daily reading reminders.
+            </Text>
+            <Button
+              title="Enable Notifications"
+              onPress={handleEnableNotifications}
+              loading={loading}
+              style={styles.permissionButton}
+            />
+          </>
+        ) : (
+          <>
+            <TimePicker
+              label="Daily reminder time"
+              value={currentTime}
+              onChange={handleTimeChange}
+            />
+            <Text style={styles.hint}>
+              You'll receive a daily reading reminder at this time
+            </Text>
+          </>
+        )}
       </Card>
 
       <Card style={styles.card}>
@@ -130,6 +174,14 @@ const styles = StyleSheet.create({
   hint: {
     ...Typography.caption,
     color: Colors.textSecondary,
+    marginTop: Spacing.xs,
+  },
+  permissionDenied: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+  },
+  permissionButton: {
     marginTop: Spacing.xs,
   },
   row: {

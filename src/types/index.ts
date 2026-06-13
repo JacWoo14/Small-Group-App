@@ -34,16 +34,12 @@ export interface ReadingPlan {
 export interface PlanReading {
   id: string;
   plan_id: string;
-  day_number: number; // 1 to total_days
-  passages: Passage[]; // JSONB array of passages
+  day_number: number | null;
+  scheduled_date: string | null; // YYYY-MM-DD
+  passages: string[]; // Plain display strings e.g. ["Isaiah 63", "Psalm 1"]
 }
 
-export interface Passage {
-  book: string;
-  chapter?: string; // Single chapter (e.g., "1")
-  chapters?: string; // Chapter range (e.g., "1-3")
-  note?: string; // Optional note about the passage
-}
+export type Passage = string;
 
 // ==========================================
 // GROUPS & ACCOUNTABILITY
@@ -121,7 +117,7 @@ export interface StreakData {
 
 export interface TodayReading {
   group: Group;
-  day_number: number;
+  day_number: number | null;
   passages: Passage[];
   completed: boolean;
 }
@@ -227,4 +223,5 @@ export type GroupStackParamList = {
   GroupDetails: { groupId: string };
   CreateGroup: undefined;
   JoinGroup: undefined;
+  ImportPlan: { groupId?: string };
 };

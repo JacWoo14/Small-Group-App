@@ -1,4 +1,3 @@
-import 'react-native-url-polyfill/auto';
 import { Platform } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
@@ -7,15 +6,28 @@ const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Custom storage adapter using Expo SecureStore (encrypted, for mobile)
+// Falls back gracefully if SecureStore is unavailable (e.g. no device lock screen)
 const SecureStoreAdapter = {
   getItem: async (key: string) => {
-    return await SecureStore.getItemAsync(key);
+    try {
+      return await SecureStore.getItemAsync(key);
+    } catch {
+      return null;
+    }
   },
   setItem: async (key: string, value: string) => {
-    await SecureStore.setItemAsync(key, value);
+    try {
+      await SecureStore.setItemAsync(key, value);
+    } catch {
+      // Silently fail — user will need to re-auth next session
+    }
   },
   removeItem: async (key: string) => {
-    await SecureStore.deleteItemAsync(key);
+    try {
+      await SecureStore.deleteItemAsync(key);
+    } catch {
+      // Silently fail
+    }
   },
 };
 
@@ -27,6 +39,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     ...(storageAdapter ? { storage: storageAdapter } : {}),
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true, // Auto-detects magic link tokens in URL hash
+    detectSessionInUrl: Platform.OS === 'web',
   },
 });

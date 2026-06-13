@@ -120,12 +120,15 @@ export default function CreateGroupScreen() {
           ))
         )}
 
-        <DatePicker
-          label="Start Date"
-          value={startDate}
-          onChange={setStartDate}
-          minimumDate={new Date()}
-        />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('ImportPlan', {})}
+          style={styles.importLink}
+        >
+          <Text style={styles.importLinkText}>+ Import a custom plan</Text>
+        </TouchableOpacity>
+
+        {/* start_date is only meaningful for day-numbered plans.
+            Date-first plans have dates baked into plan_readings already. */}
 
         <Button
           title="Create Group"
@@ -154,6 +157,14 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.textSecondary,
     marginBottom: Spacing.md,
+  },
+  importLink: {
+    marginBottom: Spacing.md,
+    paddingVertical: Spacing.xs,
+  },
+  importLinkText: {
+    ...Typography.body,
+    color: Colors.primary,
   },
   planOption: {
     backgroundColor: Colors.white,

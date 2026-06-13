@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -19,10 +19,12 @@ export default function TodayScreen() {
   const { user } = useAuth();
   const { data: readings, isLoading, error } = useTodaysReadings();
   const markComplete = useMarkComplete();
+  const [submittingGroupId, setSubmittingGroupId] = useState<string | null>(null);
 
   const today = format(new Date(), 'yyyy-MM-dd');
 
   async function handleMarkComplete(reading: TodayReading) {
+    setSubmittingGroupId(reading.group.id);
     try {
       await markComplete.mutateAsync({
         groupId: reading.group.id,
@@ -35,6 +37,8 @@ export default function TodayScreen() {
       } else {
         Alert.alert('Error', error.message || 'Failed to mark complete');
       }
+    } finally {
+      setSubmittingGroupId(null);
     }
   }
 
@@ -69,30 +73,33 @@ export default function TodayScreen() {
         readings.map((reading: TodayReading) => (
           <Card key={reading.group.id} style={styles.readingCard}>
             <Text style={styles.groupLabel}>{reading.group.name}</Text>
-            <Text style={styles.dayNumber}>
-              Day {reading.day_number}
-              {reading.group.reading_plan
-                ? ` of ${reading.group.reading_plan.total_days}`
-                : ''}
-            </Text>
-
-            {reading.passages.length > 0 ? (
-              reading.passages.map((passage: Passage, index: number) => (
-                <Text key={index} style={styles.passage}>
-                  {passage.book} {passage.chapters || passage.chapter}
-                </Text>
-              ))
-            ) : (
-              <Text style={styles.hint}>No reading data for this day</Text>
+            {reading.day_number != null && (
+              <Text style={styles.dayNumber}>
+                Day {reading.day_number}
+                {reading.group.reading_plan
+                  ? ` of ${reading.group.reading_plan.total_days}`
+                  : ''}
+              </Text>
             )}
 
-            <Button
-              title={reading.completed ? 'Completed' : 'Mark Complete'}
-              onPress={() => handleMarkComplete(reading)}
-              disabled={reading.completed || markComplete.isPending}
-              loading={markComplete.isPending}
-              style={styles.button}
-            />
+            {reading.passages.length > 0 ? (
+              <>
+                {reading.passages.map((passage: Passage, index: number) => (
+                  <Text key={index} style={styles.passage}>
+                    {passage}
+                  </Text>
+                ))}
+                <Button
+                  title={reading.completed ? 'Completed' : 'Mark Complete'}
+                  onPress={() => handleMarkComplete(reading)}
+                  disabled={reading.completed || submittingGroupId === reading.group.id}
+                  loading={submittingGroupId === reading.group.id}
+                  style={styles.button}
+                />
+              </>
+            ) : (
+              <Text style={styles.hint}>No reading scheduled for today</Text>
+            )}
           </Card>
         ))
       )}

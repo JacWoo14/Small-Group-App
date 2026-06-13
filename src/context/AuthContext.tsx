@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User as AuthUser } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 import { supabase } from '../services/supabase';
 import { ensureUserProfile } from '../services/auth';
+import { registerForPushNotifications } from '../services/notifications';
 import { User } from '../types';
 
 type AuthContextType = {
@@ -22,6 +24,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
+  function handleProfileLoaded(profile: User | null) {
+    if (profile) {
+      setUser(profile);
+      setNeedsOnboarding(false);
+      registerForPushNotifications(profile.id).catch(() => {});
+    } else {
+      setNeedsOnboarding(true);
+    }
+    setLoading(false);
+  }
+
   useEffect(() => {
     // Get initial session on app load
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -29,23 +42,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        // Check if user profile exists in our users table
-        ensureUserProfile(session.user.id, session.user.email!).then(
-          (profile) => {
-            if (profile) {
-              setUser(profile);
-              setNeedsOnboarding(false);
-            } else {
-              // User authenticated but no profile = needs onboarding
-              setNeedsOnboarding(true);
-            }
-            setLoading(false);
-          }
-        );
+        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
       } else {
         setLoading(false);
       }
     });
+
+    // Handle magic link deep links (myapp://auth/callback#access_token=...&refresh_token=...)
+    const handleDeepLink = async (url: string) => {
+      const hash = url.split('#')[1];
+      if (!hash) return;
+      const params = new URLSearchParams(hash);
+      const access_token = params.get('access_token');
+      const refresh_token = params.get('refresh_token');
+      if (access_token && refresh_token) {
+        await supabase.auth.setSession({ access_token, refresh_token });
+      }
+    };
+
+    Linking.getInitialURL().then((url) => { if (url) handleDeepLink(url); });
+    const linkSub = Linking.addEventListener('url', ({ url }) => handleDeepLink(url));
 
     // Listen for auth changes (login, logout, token refresh)
     const {
@@ -55,18 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        // User signed in - check for profile
-        ensureUserProfile(session.user.id, session.user.email!).then(
-          (profile) => {
-            if (profile) {
-              setUser(profile);
-              setNeedsOnboarding(false);
-            } else {
-              setNeedsOnboarding(true);
-            }
-            setLoading(false);
-          }
-        );
+        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
       } else {
         // User signed out
         setUser(null);
@@ -75,7 +80,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      linkSub.remove();
+    };
   }, []);
 
   return (

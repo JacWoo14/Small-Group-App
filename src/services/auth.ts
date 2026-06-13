@@ -1,6 +1,5 @@
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
-import * as Linking from 'expo-linking';
 
 /**
  * Get the correct redirect URL based on platform
@@ -9,11 +8,9 @@ import * as Linking from 'expo-linking';
  */
 function getRedirectUrl(): string {
   if (Platform.OS === 'web') {
-    // For web, use the actual browser URL so redirect works correctly
     return typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8082';
   }
-  // For mobile, use Expo deep link
-  return Linking.createURL('/auth/callback');
+  return 'myapp://auth/callback';
 }
 
 /**
@@ -21,12 +18,10 @@ function getRedirectUrl(): string {
  * User clicks the link in their email to sign in (no password needed!)
  */
 export async function signInWithEmail(email: string) {
-  const redirectUrl = getRedirectUrl();
-
   const { error } = await supabase.auth.signInWithOtp({
     email: email.toLowerCase().trim(),
     options: {
-      emailRedirectTo: redirectUrl,
+      emailRedirectTo: getRedirectUrl(),
     },
   });
 

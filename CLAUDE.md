@@ -1,238 +1,132 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
+
+# skills
+
+## gstack
+
+Use the `/browse` skill from gstack for all web browsing. Never use `mcp__claude-in-chrome__*` tools.
+
+Available skills: `/plan-ceo-review`, `/plan-eng-review`, `/review`, `/ship`, `/browse`, `/qa`, `/setup-browser-cookies`, `/retro`
 
 ## Project Context
 
-This is a **React Native + Expo** mobile app for Bible reading accountability, migrated from a Next.js web app (located in `../Reference/bible-reading-plan/`). The migration reused ~70% of the business logic while adapting UI for mobile.
+A **React Native + Expo (SDK 54)** mobile app for Bible reading accountability. Small groups follow a shared reading plan, mark daily readings complete, and see each other's progress.
 
-**Key Migration Principle**: All browser-specific code (localStorage, window, document) has been replaced with React Native equivalents (AsyncStorage). When migrating components from the reference project, always convert HTML elements to React Native components and Tailwind CSS to StyleSheet.
+**Stack**: React Native + Expo · TypeScript · Supabase (PostgreSQL + Auth) · React Query · EAS Build
 
 ## Development Commands
 
 ```bash
-# Start development server (shows QR code for Expo Go)
-npm start
-
-# Run on specific platform
-npm run ios        # iOS simulator (macOS only)
-npm run android    # Android emulator
-npm run web        # Web (limited functionality)
-
-# Clear Metro bundler cache
-npx expo start -c
-
-# Type checking
-npx tsc --noEmit
+npm start                    # Start Metro (Expo Go / web)
+npm run web                  # Web browser
+npx tsc --noEmit             # Type check
+npx expo start -c            # Clear cache and restart
+npx eas build --platform android --profile preview --non-interactive  # Build APK
 ```
 
-## Architecture Overview
+## Architecture
 
-### Offline-First Data Flow
-
-This app follows an **offline-first architecture** where all data operations must work without internet:
-
-1. **User action** → Update AsyncStorage immediately
-2. **Update UI** → Optimistic update (instant feedback)
-3. **Queue sync** → Add to sync queue (when backend is implemented)
-4. **Background sync** → Upload to Supabase when online
-
-**Critical**: All storage operations in `src/utils/storage.ts` are async. Always `await` them.
-
-### Layer Separation
+### Data Flow
+All data lives in Supabase. React Query handles fetching and caching. No local AsyncStorage — Supabase is the single source of truth.
 
 ```
 Screens (src/screens/)
-    ↓ use
-Components (src/components/)
-    ↓ use
-Utils (src/utils/)
-    ↓ use
-Types (src/types/)
+    ↓ use hooks
+Hooks (src/hooks/)          ← React Query (useQuery / useMutation)
+    ↓ call
+Services (src/services/)    ← Supabase queries
+    ↓
+Supabase (PostgreSQL)
 ```
 
-**Services layer** (to be implemented in `src/services/`) will handle backend communication (Supabase).
-
-### State Management Strategy
-
-**Current**: Local state + AsyncStorage (no global state yet)
-**Planned**: React Context for auth/groups, migrate to Zustand if performance issues arise
-
-When implementing features:
-- Keep local data in AsyncStorage as source of truth
-- Backend is sync layer, not primary storage
-- UI must work offline
-
-## Key File Responsibilities
-
-### src/utils/storage.ts
-**Central data persistence layer**. All AsyncStorage operations go through here.
-
-- `saveProgress()` / `loadProgress()` - Reading progress (supports multi-plan)
-- `saveNote()` / `loadNotes()` - Personal notes
-- `saveUser()` / `loadUser()` - User profile
-- Handles migration from old single-plan format to multi-plan format automatically
-
-**Pattern**: All functions are async, include error handling, and update in-memory caches where appropriate.
-
-### src/utils/customPlans.ts
-Manages user-created reading plans with **cache-first pattern**:
-- Call `initializeCustomPlans()` on app startup to populate cache
-- `getCustomPlans()` is synchronous (reads from cache)
-- Save operations update cache + AsyncStorage atomically
-
-### src/constants/theme.ts
-**Single source of truth for all styling**. Contains:
-- `Colors` - Palette from web app (Sacred Gold #C4941D, Deep Earth #5A4A3B, etc.)
-- `Typography` - Predefined text styles (use spreading: `...Typography.h2`)
-- `CommonStyles` - Reusable component styles
-- `Spacing`, `BorderRadius`, `Shadows` - Design tokens
-
-**When styling**: Always import and use theme constants instead of hardcoding values.
-
-### src/types/index.ts
-All TypeScript interfaces. Organized in sections:
-1. **Core types** (migrated from web app): `ReadingPlan`, `Progress`, `Note`, etc.
-2. **New mobile features**: `User`, `Group`, `NotificationPayload`, etc.
-
-## Migration Patterns
-
-### Converting Web Components to Mobile
-
-**Reference project components** (`../Reference/bible-reading-plan/components/`) need conversion:
-
-```tsx
-// WEB (Tailwind + HTML)
-<div className="bg-white rounded-lg p-4 shadow-md">
-  <h2 className="text-2xl font-bold">Title</h2>
-  <p className="text-gray-600">Description</p>
-</div>
-
-// MOBILE (StyleSheet + React Native)
-import { View, Text, StyleSheet } from 'react-native';
-import { Colors, Typography, CommonStyles, Spacing } from '../constants/theme';
-
-<View style={styles.card}>
-  <Text style={styles.title}>Title</Text>
-  <Text style={styles.description}>Description</Text>
-</View>
-
-const styles = StyleSheet.create({
-  card: {
-    ...CommonStyles.card,  // Includes backgroundColor, borderRadius, padding, shadow
-  },
-  title: Typography.h3,
-  description: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-  },
-});
-```
+### Auth Flow
+- Magic link via Supabase (`signInWithOtp`)
+- Tokens stored in Expo SecureStore
+- Deep link handler in `AuthContext.tsx` catches `myapp://auth/callback#access_token=...`
+- `emailRedirectTo` is hardcoded as `'myapp://auth/callback'` for mobile (do NOT use `Linking.createURL` — it returns the Expo Go URL even in production builds)
 
 ### Navigation Structure
-
 ```
 RootNavigator (Stack)
+  ├─ AuthScreen
+  ├─ OnboardingScreen
   └─ MainTabNavigator (Bottom Tabs)
-      ├─ Today (HomeScreen) - Daily reading
-      ├─ Plans (PlansScreen) - Browse/select plans
-      ├─ Groups (GroupsScreen) - Accountability groups [NEW]
-      ├─ Progress (ProgressScreen) - Stats/streaks
-      └─ Settings (SettingsScreen) - User preferences
+      ├─ Today (TodayScreen)
+      ├─ Groups (GroupStackNavigator)
+      │    ├─ GroupList, GroupDetails, CreateGroup, JoinGroup, ImportPlan
+      ├─ Progress (ProgressScreen)
+      └─ Settings (SettingsScreen)
 ```
 
-**To add screens**: Create in `src/screens/`, import in navigator, add to appropriate stack/tab.
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/services/supabase.ts` | Supabase client (SecureStore adapter, `detectSessionInUrl: Platform.OS === 'web'`) |
+| `src/services/auth.ts` | `signInWithEmail`, `createUserProfile`, profile helpers |
+| `src/services/groups.ts` | `createGroup`, `joinGroup`, `getGroupDetails`, `leaveGroup`, `getAvailablePlans` |
+| `src/services/completions.ts` | `markComplete`, `getTodaysReadings`, `getGroupCompletionsForDate` |
+| `src/services/stats.ts` | `getUserStreak`, `getYesterdayGroupRecap` |
+| `src/services/plans.ts` | `parsePlanText`, `importReadingPlan` |
+| `src/hooks/useGroups.ts` | React Query hooks for all group + plan operations |
+| `src/hooks/useProgress.ts` | `useUserStreak`, `useYesterdayRecap` |
+| `src/context/AuthContext.tsx` | `useAuth()` — session, user, profile, deep link handler |
+| `src/constants/theme.ts` | Colors, Typography, Spacing — single source of truth for styling |
+| `src/types/index.ts` | All TypeScript interfaces |
 
 ## Data Models
 
-### Multi-Plan Progress
-Users can have multiple plans active simultaneously. Progress is stored as:
-
-```typescript
-MultiPlanProgress {
-  userId: string
-  currentPlanId: string  // Active plan
-  planProgress: {
-    [planId]: PlanProgress  // Progress per plan
-  }
-}
+### Reading Plans (date-first model)
+Plans store `scheduled_date` on each `plan_readings` row. Today's reading is looked up by:
+```sql
+WHERE plan_id = $groupPlanId AND scheduled_date = CURRENT_DATE
 ```
+No day-number arithmetic needed. `day_number` is nullable (kept for future use).
 
-**When working with progress**: Always use helper functions from `storage.ts`:
-- `getCurrentPlanProgress()` - Get active plan's progress
-- `getPlanProgress(multiProgress, planId)` - Get specific plan
-- `switchPlan()` - Change active plan (preserves all progress)
+### Passages
+Stored as plain string arrays: `["Isaiah 63", "Psalm 119:1-96"]`. No structured parsing.
 
-### Reading Plans
-Plans are either:
-1. **Default plans**: Static JSON in `src/data/plans.json`
-2. **Custom plans**: User-created, stored in AsyncStorage
+### Plan Import Format
+Tab-separated, one reading per line:
+```
+Genesis 1	3-16-2026
+Genesis 2	3-17-2026
+```
+Dates in `M-D-YYYY` format are normalized to `YYYY-MM-DD` by the parser.
 
-Use `getAllPlans()` from `src/utils/readingPlans.ts` to get merged list.
+## Styling Conventions
+- Always use `src/constants/theme.ts` — never hardcode colors or spacing
+- Spread theme objects: `...Typography.h2` (not `fontSize: Typography.h2.fontSize`)
+- Navigation header style: `backgroundColor: Colors.primary`, `tintColor: Colors.white`
 
-## Important Conventions
+## Android Gotchas
+1. `expo-notifications` causes crash if added without full setup — excluded until Phase 4
+2. `expo-dev-client` in `app.json` plugins causes Gradle failure — only add for dev builds
+3. `newArchEnabled: true` causes crashes — keep `false`
+4. Do NOT use `react-native-url-polyfill` — RN 0.81 has native URL support, polyfill interferes
+5. Supabase free tier **pauses after ~1 week of inactivity** — unpause from dashboard if requests fail
 
-### AsyncStorage Keys
-All keys prefixed with `@bible_reading:` to avoid conflicts:
-- `@bible_reading:progress`
-- `@bible_reading:notes`
-- `@bible_reading:user`
-- `@bible_reading:custom_plans`
+## What's Not Built Yet
+- Push notifications (Phase 4) — `expo-notifications` not installed
+- App Store submission
 
-**Never access AsyncStorage directly** - use functions in `src/utils/storage.ts`.
+## Skill routing
 
-### Date Handling
-Use `date-fns` for all date operations (already imported in `src/utils/dateUtils.ts`).
+When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
 
-Key functions:
-- `calculateCurrentDay(startDate)` - Returns day number (1-indexed) based on plan start
-- `hasReadToday(completedDates)` - Boolean check if reading completed today
-- `calculateStreak(completedDates)` - Returns { current, longest } streak
-
-Dates stored as **ISO strings**. Always use `startOfDay()` when comparing dates to avoid time zone issues.
-
-## Planned Features (Not Yet Implemented)
-
-When implementing these, refer to detailed designs in `ARCHITECTURE.md`:
-
-1. **Authentication** (`src/services/authService.ts`)
-   - Use Supabase Auth
-   - Store tokens in Expo SecureStore (not AsyncStorage)
-   - Create `src/context/AuthContext.tsx` for global state
-
-2. **Groups** (`src/services/groupService.ts`)
-   - Real-time sync via Supabase subscriptions
-   - Schema defined in ARCHITECTURE.md (tables: groups, group_members, member_progress)
-   - Subscribe to group updates when screen is visible, unsubscribe on blur
-
-3. **Push Notifications** (`src/services/notificationService.ts`)
-   - Use expo-notifications
-   - Schedule daily reminders at user's preferred time
-   - Support notification actions (mark complete without opening app)
-
-4. **Plan Import** (`src/services/importService.ts`)
-   - Support formats: JSON, CSV, YouVersion, Bible Gateway
-   - Validate with `validateCustomPlan()` before saving
-   - Parsers in `src/utils/planParsers.ts`
-
-## Testing Approach
-
-When adding tests (not yet set up):
-- Unit test utils (`src/utils/`) - Pure functions, easy to test
-- Integration test services - Mock AsyncStorage and Supabase
-- E2E test critical flows - Use Detox or Maestro
-
-## Common Gotchas
-
-1. **AsyncStorage is always async** - Don't forget `await`, or use cached values when available
-2. **Custom plans cache** - Call `initializeCustomPlans()` before using `getCustomPlans()`
-3. **Multi-plan support** - Old single-plan format auto-migrates, but always work with `MultiPlanProgress`
-4. **Theme usage** - Spread theme objects, don't destructure (`...Typography.h2`, not `fontSize: Typography.h2.fontSize`)
-5. **Navigation types** - React Navigation needs typed navigators (see examples in `src/navigation/`)
-
-## Reference Documentation
-
-- **ARCHITECTURE.md** - Detailed technical design for new features (auth, groups, notifications)
-- **MIGRATION_PLAN.md** - What's been migrated, what's pending, file-by-file breakdown
-- **GETTING_STARTED.md** - Quick start for new developers
-- **../Reference/bible-reading-plan/** - Original web app for reference when migrating components
+Key routing rules:
+- Product ideas/brainstorming → invoke /office-hours
+- Strategy/scope → invoke /plan-ceo-review
+- Architecture → invoke /plan-eng-review
+- Design system/plan review → invoke /design-consultation or /plan-design-review
+- Full review pipeline → invoke /autoplan
+- Bugs/errors → invoke /investigate
+- QA/testing site behavior → invoke /qa or /qa-only
+- Code review/diff check → invoke /review
+- Visual polish → invoke /design-review
+- Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Save progress → invoke /context-save
+- Resume context → invoke /context-restore
+- Author a backlog-ready spec/issue → invoke /spec

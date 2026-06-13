@@ -1,6 +1,5 @@
 import { supabase } from './supabase';
 import { TodayReading, ReadingCompletion } from '../types';
-import { format } from 'date-fns';
 
 /**
  * Mark today's reading as complete for a group
@@ -32,70 +31,43 @@ export async function markComplete(
 }
 
 /**
- * Get today's readings for all of the user's active groups
+ * Get today's readings for all of the user's active groups.
+ * Uses a single RPC call instead of N+1 queries.
  */
 export async function getTodaysReadings(
   userId: string,
-  timezone: string
+  _timezone: string
 ): Promise<TodayReading[]> {
-  // Get user's active groups
-  const { data: memberships, error: memError } = await supabase
-    .from('group_members')
-    .select(`
-      group:groups(
-        *,
-        reading_plan:reading_plans(*)
-      )
-    `)
-    .eq('user_id', userId)
-    .eq('is_active', true);
+  const { data, error } = await supabase
+    .rpc('get_all_todays_readings', { user_uuid: userId });
 
-  if (memError) throw memError;
+  if (error) throw error;
+  if (!data || data.length === 0) return [];
 
-  const groups = (memberships || [])
-    .map((m: any) => m.group)
-    .filter(Boolean);
-
-  if (groups.length === 0) return [];
-
-  const today = format(new Date(), 'yyyy-MM-dd');
-
-  // Get today's reading and completion status for each group
-  const readings: TodayReading[] = [];
-
-  for (const group of groups) {
-    // Call the SQL function to get today's reading
-    const { data: readingData, error: readingError } = await supabase
-      .rpc('get_todays_reading', {
-        group_uuid: group.id,
-        user_timezone: timezone,
-      });
-
-    if (readingError) {
-      console.warn(`Failed to get reading for group ${group.id}:`, readingError);
-      continue;
-    }
-
-    // Check if user completed today for this group
-    const { data: completion } = await supabase
-      .from('reading_completions')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('group_id', group.id)
-      .eq('reading_date', today)
-      .maybeSingle();
-
-    const reading = readingData?.[0];
-
-    readings.push({
-      group,
-      day_number: reading?.day_number || 1,
-      passages: reading?.passages || [],
-      completed: !!completion,
-    });
-  }
-
-  return readings;
+  return (data as any[]).map((row) => ({
+    group: {
+      id: row.group_id,
+      name: row.group_name,
+      reading_plan_id: row.group_reading_plan_id,
+      start_date: row.group_start_date,
+      invite_code: row.group_invite_code,
+      created_by: row.group_created_by,
+      created_at: row.group_created_at,
+      updated_at: row.group_updated_at,
+      reading_plan: {
+        id: row.group_reading_plan_id,
+        name: row.plan_name,
+        total_days: row.plan_total_days,
+        is_public: row.plan_is_public,
+        created_by: row.plan_created_by,
+        description: null,
+        created_at: '',
+      },
+    },
+    day_number: row.day_number ?? null,
+    passages: Array.isArray(row.passages) ? row.passages : (row.passages ?? []),
+    completed: row.completed,
+  }));
 }
 
 /**

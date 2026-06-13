@@ -40,3 +40,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+.gstack/
+
+# Supabase CLI temp files
+supabase/.temp/
