@@ -2,7 +2,25 @@
   "permissions": {
     "allow": [
       "Bash(npm start)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(netsh advfirewall firewall add rule:*)",
+      "Bash(ipconfig:*)",
+      "Bash(npx expo:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git checkout *)",
+      "Bash(npx jest *)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('jest',{}\\), indent=2\\)\\)\")",
+      "Bash(node -e \"const m = require\\('jest-expo/jest-preset'\\); console.log\\(JSON.stringify\\(m, null, 2\\)\\)\")",
+      "Bash(node -e \"try { require\\('expo-notifications'\\); console.log\\('OK'\\) } catch\\(e\\) { console.log\\('FAIL', e.message\\) }\")",
+      "Bash(node -e \"try { require\\('expo-device'\\); console.log\\('OK'\\) } catch\\(e\\) { console.log\\('FAIL', e.message\\) }\")",
+      "Bash(~/.claude/skills/gstack/bin/gstack-config set *)",
+      "Bash(~/.claude/skills/gstack/bin/gstack-learnings-search --limit 5 --query \"release ship version changelog merge pr\" --cross-project)",
+      "Read(//c/Users/jacwo/.claude/skills/gstack/review/specialists/**)",
+      "Read(//c/Users/jacwo/.claude/skills/ship/review/**)",
+      "Read(//c/Users/jacwo/.claude/skills/review/**)",
+      "Bash(git add *)",
+      "Bash(git rm *)"
     ]
   }
 }

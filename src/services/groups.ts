@@ -180,12 +180,16 @@ export async function transferGroupOwnership(
   groupId: string,
   newOwnerId: string
 ): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('groups')
     .update({ created_by: newOwnerId })
-    .eq('id', groupId);
+    .eq('id', groupId)
+    .select('id');
 
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('Transfer blocked — you may not have permission to transfer ownership of this group.');
+  }
 }
 
 /**

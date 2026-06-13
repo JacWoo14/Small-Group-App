@@ -72,4 +72,18 @@ describe('calculateStreakFromDates', () => {
     expect(result.current).toBe(0);
     expect(result.longest).toBe(1);
   });
+
+  it('returns longest=1 for two non-consecutive dates neither of which is today/yesterday', () => {
+    // Regression: previously returned longest=0 because loop only updated longest on diff===1
+    const result = calculateStreakFromDates(['2026-01-01', '2026-01-15'], TODAY);
+    expect(result.current).toBe(0);
+    expect(result.longest).toBe(1);
+  });
+
+  it('returns longest=1 for many scattered non-consecutive dates', () => {
+    const dates = ['2026-01-01', '2026-01-10', '2026-01-20', '2026-02-05'];
+    const result = calculateStreakFromDates(dates, TODAY);
+    expect(result.current).toBe(0);
+    expect(result.longest).toBe(1);
+  });
 });

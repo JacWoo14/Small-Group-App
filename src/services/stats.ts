@@ -37,7 +37,7 @@ export function calculateStreakFromDates(
 
   // --- Longest streak ---
   const ascending = [...uniqueDates].sort((a, b) => a.localeCompare(b));
-  let longest = 0;
+  let longest = 1; // At least 1 if there are any dates
   let runLength = 1;
 
   for (let i = 1; i < ascending.length; i++) {
@@ -52,7 +52,6 @@ export function calculateStreakFromDates(
       runLength = 1;
     }
   }
-  if (ascending.length === 1) longest = 1;
   if (current > longest) longest = current;
 
   return { current, longest };

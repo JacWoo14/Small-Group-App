@@ -121,7 +121,7 @@ export default function CreateGroupScreen() {
         )}
 
         <TouchableOpacity
-          onPress={() => navigation.navigate('ImportPlan')}
+          onPress={() => navigation.navigate('ImportPlan', {})}
           style={styles.importLink}
         >
           <Text style={styles.importLinkText}>+ Import a custom plan</Text>
