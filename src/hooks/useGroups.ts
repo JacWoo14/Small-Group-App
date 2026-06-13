@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { dismissTodayNotification } from '../services/notifications';
 import {
   getUserGroups,
   getGroupDetails,
@@ -101,6 +102,7 @@ export function useMarkComplete() {
     mutationFn: (params: { groupId: string; readingDate: string }) =>
       markComplete(user!.id, params.groupId, params.readingDate),
     onSuccess: (_data, variables) => {
+      dismissTodayNotification().catch(() => {});
       queryClient.invalidateQueries({ queryKey: ['todaysReadings', user?.id] });
       queryClient.invalidateQueries({ queryKey: ['group', variables.groupId] });
       queryClient.invalidateQueries({ queryKey: ['streak', user?.id] });

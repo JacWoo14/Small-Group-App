@@ -3,6 +3,7 @@ import { Session, User as AuthUser } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
 import { supabase } from '../services/supabase';
 import { ensureUserProfile } from '../services/auth';
+import { registerForPushNotifications } from '../services/notifications';
 import { User } from '../types';
 
 type AuthContextType = {
@@ -23,6 +24,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
+  function handleProfileLoaded(profile: User | null) {
+    if (profile) {
+      setUser(profile);
+      setNeedsOnboarding(false);
+      registerForPushNotifications(profile.id).catch(() => {});
+    } else {
+      setNeedsOnboarding(true);
+    }
+    setLoading(false);
+  }
+
   useEffect(() => {
     // Get initial session on app load
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -30,19 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        // Check if user profile exists in our users table
-        ensureUserProfile(session.user.id, session.user.email!).then(
-          (profile) => {
-            if (profile) {
-              setUser(profile);
-              setNeedsOnboarding(false);
-            } else {
-              // User authenticated but no profile = needs onboarding
-              setNeedsOnboarding(true);
-            }
-            setLoading(false);
-          }
-        );
+        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
       } else {
         setLoading(false);
       }
@@ -71,18 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        // User signed in - check for profile
-        ensureUserProfile(session.user.id, session.user.email!).then(
-          (profile) => {
-            if (profile) {
-              setUser(profile);
-              setNeedsOnboarding(false);
-            } else {
-              setNeedsOnboarding(true);
-            }
-            setLoading(false);
-          }
-        );
+        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
       } else {
         // User signed out
         setUser(null);

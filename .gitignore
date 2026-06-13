@@ -41,3 +41,6 @@ yarn-error.*
 /ios
 /android
 .gstack/
+
+# Supabase CLI temp files
+supabase/.temp/

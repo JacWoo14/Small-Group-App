@@ -83,22 +83,23 @@ export default function TodayScreen() {
             )}
 
             {reading.passages.length > 0 ? (
-              reading.passages.map((passage: Passage, index: number) => (
-                <Text key={index} style={styles.passage}>
-                  {passage}
-                </Text>
-              ))
+              <>
+                {reading.passages.map((passage: Passage, index: number) => (
+                  <Text key={index} style={styles.passage}>
+                    {passage}
+                  </Text>
+                ))}
+                <Button
+                  title={reading.completed ? 'Completed' : 'Mark Complete'}
+                  onPress={() => handleMarkComplete(reading)}
+                  disabled={reading.completed || submittingGroupId === reading.group.id}
+                  loading={submittingGroupId === reading.group.id}
+                  style={styles.button}
+                />
+              </>
             ) : (
-              <Text style={styles.hint}>No reading data for this day</Text>
+              <Text style={styles.hint}>No reading scheduled for today</Text>
             )}
-
-            <Button
-              title={reading.completed ? 'Completed' : 'Mark Complete'}
-              onPress={() => handleMarkComplete(reading)}
-              disabled={reading.completed || submittingGroupId === reading.group.id}
-              loading={submittingGroupId === reading.group.id}
-              style={styles.button}
-            />
           </Card>
         ))
       )}
