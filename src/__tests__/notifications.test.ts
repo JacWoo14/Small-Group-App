@@ -17,7 +17,8 @@ jest.mock('expo-notifications', () => ({
   requestPermissionsAsync: jest.fn(),
   setNotificationChannelAsync: jest.fn(),
   getExpoPushTokenAsync: jest.fn(),
-  dismissAllNotificationsAsync: jest.fn(),
+  getPresentedNotificationsAsync: jest.fn(),
+  dismissNotificationAsync: jest.fn(),
   AndroidImportance: { DEFAULT: 3 },
 }));
 
@@ -70,7 +71,8 @@ const mockGetPermissions = Notifications.getPermissionsAsync as jest.MockedFunct
 const mockRequestPermissions = Notifications.requestPermissionsAsync as jest.MockedFunction<typeof Notifications.requestPermissionsAsync>;
 const mockSetChannel = Notifications.setNotificationChannelAsync as jest.MockedFunction<typeof Notifications.setNotificationChannelAsync>;
 const mockGetToken = Notifications.getExpoPushTokenAsync as jest.MockedFunction<typeof Notifications.getExpoPushTokenAsync>;
-const mockDismissAll = Notifications.dismissAllNotificationsAsync as jest.MockedFunction<typeof Notifications.dismissAllNotificationsAsync>;
+const mockGetPresentedNotifications = Notifications.getPresentedNotificationsAsync as jest.MockedFunction<typeof Notifications.getPresentedNotificationsAsync>;
+const mockDismissNotification = Notifications.dismissNotificationAsync as jest.MockedFunction<typeof Notifications.dismissNotificationAsync>;
 
 // ─── Shared beforeEach ────────────────────────────────────────────────────────
 
@@ -82,7 +84,8 @@ beforeEach(() => {
   mockRequestPermissions.mockResolvedValue({ status: 'granted' } as any);
   mockSetChannel.mockResolvedValue(null as any);
   mockGetToken.mockResolvedValue({ data: 'ExponentPushToken[test]', type: 'expo' } as any);
-  mockDismissAll.mockResolvedValue(undefined);
+  mockGetPresentedNotifications.mockResolvedValue([]);
+  mockDismissNotification.mockResolvedValue(undefined);
 
   // Supabase update chain: update() → eq() → { error: null }
   mockEq.mockResolvedValue({ error: null });
@@ -229,22 +232,49 @@ describe('registerForPushNotifications', () => {
 // ─── dismissTodayNotification ─────────────────────────────────────────────────
 
 describe('dismissTodayNotification', () => {
-  it('calls dismissAllNotificationsAsync', async () => {
-    await dismissTodayNotification();
+  it('dismisses only the notification matching the given groupId', async () => {
+    mockGetPresentedNotifications.mockResolvedValue([
+      { request: { identifier: 'notif-1', content: { data: { group_id: 'group-abc' } } } },
+      { request: { identifier: 'notif-2', content: { data: { group_id: 'group-xyz' } } } },
+    ] as any);
 
-    expect(mockDismissAll).toHaveBeenCalledTimes(1);
+    await dismissTodayNotification('group-abc');
+
+    expect(mockDismissNotification).toHaveBeenCalledTimes(1);
+    expect(mockDismissNotification).toHaveBeenCalledWith('notif-1');
   });
 
-  it('resolves (does not throw) when dismissAllNotificationsAsync resolves', async () => {
-    mockDismissAll.mockResolvedValue(undefined);
+  it('dismisses multiple notifications when more than one matches the groupId', async () => {
+    mockGetPresentedNotifications.mockResolvedValue([
+      { request: { identifier: 'notif-1', content: { data: { group_id: 'group-abc' } } } },
+      { request: { identifier: 'notif-2', content: { data: { group_id: 'group-abc' } } } },
+    ] as any);
 
-    await expect(dismissTodayNotification()).resolves.toBeUndefined();
+    await dismissTodayNotification('group-abc');
+
+    expect(mockDismissNotification).toHaveBeenCalledTimes(2);
   });
 
-  it('propagates error when dismissAllNotificationsAsync throws', async () => {
-    mockDismissAll.mockRejectedValue(new Error('dismiss failed'));
+  it('does not call dismissNotificationAsync when no notification matches', async () => {
+    mockGetPresentedNotifications.mockResolvedValue([
+      { request: { identifier: 'notif-1', content: { data: { group_id: 'group-xyz' } } } },
+    ] as any);
 
-    await expect(dismissTodayNotification()).rejects.toThrow('dismiss failed');
+    await dismissTodayNotification('group-abc');
+
+    expect(mockDismissNotification).not.toHaveBeenCalled();
+  });
+
+  it('resolves when no notifications are present', async () => {
+    mockGetPresentedNotifications.mockResolvedValue([]);
+
+    await expect(dismissTodayNotification('group-abc')).resolves.toBeUndefined();
+  });
+
+  it('propagates error when getPresentedNotificationsAsync throws', async () => {
+    mockGetPresentedNotifications.mockRejectedValue(new Error('fetch failed'));
+
+    await expect(dismissTodayNotification('group-abc')).rejects.toThrow('fetch failed');
   });
 });
 

@@ -24,11 +24,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
-  function handleProfileLoaded(profile: User | null) {
+  function handleProfileLoaded(profile: User | null, registerPush = false) {
     if (profile) {
       setUser(profile);
       setNeedsOnboarding(false);
-      registerForPushNotifications(profile.id).catch(() => {});
+      if (registerPush) {
+        registerForPushNotifications(profile.id).catch(() => {});
+      }
     } else {
       setNeedsOnboarding(true);
     }
@@ -42,7 +44,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
+        ensureUserProfile(session.user.id, session.user.email!).then(
+          (profile) => handleProfileLoaded(profile, true)
+        );
       } else {
         setLoading(false);
       }
@@ -66,12 +70,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes (login, logout, token refresh)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
+        ensureUserProfile(session.user.id, session.user.email!).then(
+          (profile) => handleProfileLoaded(profile, event === 'SIGNED_IN')
+        );
       } else {
         // User signed out
         setUser(null);

@@ -54,11 +54,18 @@ export async function registerForPushNotifications(userId: string): Promise<void
 }
 
 /**
- * Clear today's reading reminder from the notification tray.
- * Called when the user marks their reading complete.
+ * Dismiss the notification for a specific group from the tray.
+ * Matches by group_id in the notification's data payload so only
+ * that group's card is cleared, leaving other groups' reminders intact.
  */
-export async function dismissTodayNotification(): Promise<void> {
-  await Notifications.dismissAllNotificationsAsync();
+export async function dismissTodayNotification(groupId: string): Promise<void> {
+  const presented = await Notifications.getPresentedNotificationsAsync();
+  const matching = presented.filter(
+    (n) => n.request.content.data?.group_id === groupId
+  );
+  await Promise.all(
+    matching.map((n) => Notifications.dismissNotificationAsync(n.request.identifier))
+  );
 }
 
 /**
