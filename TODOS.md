@@ -20,7 +20,7 @@ Work items deferred from plan reviews. Use this as the source of truth for upcom
 - EAS Build preview APK → internal testing → production release
 - `google-services.json` already configured via EAS env vars
 **Effort:** L
-**Depends on:** Push notifications (P1) — don't submit before notifications work
+**Depends on:** Nothing — push notifications shipped in Phase 4
 
 ---
 

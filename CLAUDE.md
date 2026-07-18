@@ -112,7 +112,8 @@ User picks a start date in the UI; sequential dates are assigned from that point
 ## Styling Conventions
 - Always use `src/constants/theme.ts` — never hardcode colors or spacing
 - Spread theme objects: `...Typography.h2` (not `fontSize: Typography.h2.fontSize`)
-- Navigation header style: `backgroundColor: Colors.primary`, `tintColor: Colors.white`
+- User-selectable accent color: read `theme.primary` from `useTheme()` (`src/context/ThemeContext.tsx`), not a static `Colors.primary` — that alias was removed once all 4 preset accent colors (`src/constants/theme.ts`'s `THEMES`) replaced the single hardcoded brand color. `StyleSheet.create` is static and can't reference the selected theme, so `theme.primary` is applied via an inline style merged into the `style` array at render time (see `Button.tsx`, `MainTabNavigator.tsx` for the pattern)
+- Navigation header style: `backgroundColor: theme.primary`, `tintColor: Colors.white`
 
 ## Android Gotchas
 1. `expo-notifications` requires full setup (device check, permission request, token registration) — partial setup causes crashes
