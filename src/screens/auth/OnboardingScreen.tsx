@@ -20,6 +20,7 @@ export function OnboardingScreen() {
   const [notificationTime, setNotificationTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [loading, setLoading] = useState(false);
+  const submitting = React.useRef(false);
 
   // Set default time to 7:00 AM
   React.useEffect(() => {
@@ -29,6 +30,8 @@ export function OnboardingScreen() {
   }, []);
 
   async function handleComplete() {
+    if (submitting.current) return;
+
     if (!displayName.trim()) {
       Alert.alert('Error', 'Please enter your name');
       return;
@@ -39,6 +42,7 @@ export function OnboardingScreen() {
       return;
     }
 
+    submitting.current = true;
     setLoading(true);
     try {
       // Format time as HH:MM
@@ -57,6 +61,7 @@ export function OnboardingScreen() {
       // AuthContext will detect user is set and navigate to main app
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to create profile');
+      submitting.current = false;
     } finally {
       setLoading(false);
     }
