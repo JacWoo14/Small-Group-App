@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   TouchableOpacityProps,
 } from 'react-native';
+import { useTheme } from '../../context/ThemeContext';
 import { Colors, Typography, BorderRadius } from '../../constants/theme';
 
 type ButtonProps = TouchableOpacityProps & {
@@ -22,11 +23,21 @@ export function Button({
   style,
   ...props
 }: ButtonProps) {
+  const { theme } = useTheme();
+
+  const dynamicStyle =
+    variant === 'primary'
+      ? { backgroundColor: theme.primary }
+      : variant === 'outline'
+      ? { borderColor: theme.primary }
+      : {};
+
   return (
     <TouchableOpacity
       style={[
         styles.button,
         styles[variant],
+        dynamicStyle,
         (disabled || loading) && styles.disabled,
         style,
       ]}
@@ -35,10 +46,16 @@ export function Button({
     >
       {loading ? (
         <ActivityIndicator
-          color={variant === 'outline' ? Colors.primary : '#fff'}
+          color={variant === 'outline' ? theme.primary : '#fff'}
         />
       ) : (
-        <Text style={[styles.text, styles[`${variant}Text`]]}>{title}</Text>
+        <Text style={[
+          styles.text,
+          styles[`${variant}Text`],
+          variant === 'outline' && { color: theme.primary },
+        ]}>
+          {title}
+        </Text>
       )}
     </TouchableOpacity>
   );
@@ -54,7 +71,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   primary: {
-    backgroundColor: Colors.primary,
+    // backgroundColor set dynamically
   },
   secondary: {
     backgroundColor: Colors.textSecondary,
@@ -62,7 +79,7 @@ const styles = StyleSheet.create({
   outline: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.primary,
+    // borderColor set dynamically
   },
   disabled: {
     opacity: 0.5,
@@ -78,6 +95,6 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   outlineText: {
-    color: Colors.primary,
+    // color set dynamically
   },
 });

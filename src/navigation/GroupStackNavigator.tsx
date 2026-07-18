@@ -1,6 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Colors } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
 import { GroupStackParamList } from '../types';
 import GroupsScreen from '../screens/groups/GroupsScreen';
 import CreateGroupScreen from '../screens/groups/CreateGroupScreen';
@@ -11,10 +12,12 @@ import ImportPlanScreen from '../screens/groups/ImportPlanScreen';
 const Stack = createNativeStackNavigator<GroupStackParamList>();
 
 export default function GroupStackNavigator() {
+  const { theme } = useTheme();
+
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: Colors.primary },
+        headerStyle: { backgroundColor: theme.primary },
         headerTintColor: Colors.white,
         headerTitleStyle: { fontWeight: 'bold' },
       }}

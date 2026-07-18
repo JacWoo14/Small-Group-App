@@ -9,16 +9,17 @@ import {
   TouchableOpacity,
   PanResponder,
 } from 'react-native';
-import { format, addDays, parseISO, differenceInCalendarDays } from 'date-fns';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { useReadingsForDate, useMarkComplete } from '../hooks/useGroups';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Colors, Typography, Spacing } from '../constants/theme';
 import { TodayReading, Passage } from '../types';
+import { clampDate, PAST_DAYS_LIMIT, FUTURE_DAYS_LIMIT } from '../utils/dateNav';
 
-const PAST_DAYS_LIMIT = 30;
-const FUTURE_DAYS_LIMIT = 7;
 const SWIPE_THRESHOLD = 50;
 
 function todayString() {
@@ -27,6 +28,7 @@ function todayString() {
 
 export default function TodayScreen() {
   const { user } = useAuth();
+  const { theme } = useTheme();
   const [selectedDate, setSelectedDate] = useState(todayString);
   const markComplete = useMarkComplete();
   const [submittingGroupId, setSubmittingGroupId] = useState<string | null>(null);
@@ -41,12 +43,7 @@ export default function TodayScreen() {
   const { data: readings, isLoading, error } = useReadingsForDate(selectedDate);
 
   function navigateDay(delta: number) {
-    setSelectedDate((prev) => {
-      const next = format(addDays(parseISO(prev), delta), 'yyyy-MM-dd');
-      const diff = differenceInCalendarDays(parseISO(next), new Date());
-      if (diff > FUTURE_DAYS_LIMIT || diff < -PAST_DAYS_LIMIT) return prev;
-      return next;
-    });
+    setSelectedDate((prev) => clampDate(prev, delta));
   }
 
   // PanResponder lives in a ref so it isn't recreated on each render.
@@ -58,12 +55,7 @@ export default function TodayScreen() {
       onPanResponderRelease: (_evt, gs) => {
         if (Math.abs(gs.dx) < SWIPE_THRESHOLD) return;
         const delta = gs.dx < 0 ? 1 : -1;
-        setSelectedDate((prev) => {
-          const next = format(addDays(parseISO(prev), delta), 'yyyy-MM-dd');
-          const diff = differenceInCalendarDays(parseISO(next), new Date());
-          if (diff > FUTURE_DAYS_LIMIT || diff < -PAST_DAYS_LIMIT) return prev;
-          return next;
-        });
+        setSelectedDate((prev) => clampDate(prev, delta));
       },
     })
   ).current;
@@ -111,7 +103,7 @@ export default function TodayScreen() {
             hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
             style={styles.dateArrowBtn}
           >
-            <Text style={[styles.dateArrow, !canGoBack && styles.dateArrowDisabled]}>
+            <Text style={[styles.dateArrow, { color: theme.primary }, !canGoBack && styles.dateArrowDisabled]}>
               ‹
             </Text>
           </TouchableOpacity>
@@ -125,7 +117,7 @@ export default function TodayScreen() {
               {displayDate}
             </Text>
             {!isToday && (
-              <Text style={styles.dateSubLabel}>
+              <Text style={[styles.dateSubLabel, { color: theme.primary }]}>
                 {isFuture ? 'Upcoming' : 'Tap to return to today'}
               </Text>
             )}
@@ -137,7 +129,7 @@ export default function TodayScreen() {
             hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
             style={styles.dateArrowBtn}
           >
-            <Text style={[styles.dateArrow, !canGoForward && styles.dateArrowDisabled]}>
+            <Text style={[styles.dateArrow, { color: theme.primary }, !canGoForward && styles.dateArrowDisabled]}>
               ›
             </Text>
           </TouchableOpacity>
@@ -146,7 +138,7 @@ export default function TodayScreen() {
         {/* ── Content ── */}
         {isLoading ? (
           <View style={styles.centered}>
-            <ActivityIndicator size="large" color={Colors.primary} />
+            <ActivityIndicator size="large" color={theme.primary} />
           </View>
         ) : error ? (
           <Card style={styles.readingCard}>
@@ -154,16 +146,23 @@ export default function TodayScreen() {
           </Card>
         ) : !readings || readings.length === 0 ? (
           <Card style={styles.readingCard}>
-            <Text style={styles.cardTitle}>No groups yet</Text>
-            <Text style={styles.emptyText}>
-              Join a group or create one to get started with your daily reading!
-            </Text>
-            <Text style={styles.hint}>Head to the Groups tab to get started.</Text>
+            <View style={styles.emptyState}>
+              <MaterialCommunityIcons
+                name="book-open-page-variant"
+                size={72}
+                color={Colors.lightGray}
+              />
+              <Text style={styles.cardTitle}>No groups yet</Text>
+              <Text style={styles.emptyText}>
+                Join a group or create one to get started with your daily reading!
+              </Text>
+              <Text style={styles.hint}>Head to the Groups tab to get started.</Text>
+            </View>
           </Card>
         ) : (
           readings.map((reading: TodayReading) => (
             <Card key={reading.group.id} style={styles.readingCard}>
-              <Text style={styles.groupLabel}>{reading.group.name}</Text>
+              <Text style={[styles.groupLabel, { color: theme.primary }]}>{reading.group.name}</Text>
               {reading.day_number != null && (
                 <Text style={styles.dayNumber}>
                   Day {reading.day_number}
@@ -245,7 +244,6 @@ const styles = StyleSheet.create({
   dateArrow: {
     fontSize: 32,
     lineHeight: 36,
-    color: Colors.primary,
     fontWeight: '300',
   },
   dateArrowDisabled: {
@@ -264,7 +262,6 @@ const styles = StyleSheet.create({
   },
   dateSubLabel: {
     ...Typography.caption,
-    color: Colors.primary,
     marginTop: 2,
   },
 
@@ -279,7 +276,6 @@ const styles = StyleSheet.create({
   },
   groupLabel: {
     ...Typography.caption,
-    color: Colors.primary,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -321,5 +317,9 @@ const styles = StyleSheet.create({
   errorText: {
     ...Typography.body,
     color: Colors.error,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
   },
 });

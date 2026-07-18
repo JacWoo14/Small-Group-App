@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { updateNotificationTime, signOut } from '../services/auth';
 import { getNotificationPermissionStatus, registerForPushNotifications } from '../services/notifications';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { TimePicker } from '../components/TimePicker';
-import { Colors, Typography, Spacing } from '../constants/theme';
+import { Colors, Typography, Spacing, THEMES, THEME_ORDER } from '../constants/theme';
 
 export default function SettingsScreen() {
   const { user, setUser } = useAuth();
+  const { themeId, setThemeId, pendingThemeId } = useTheme();
   const [loading, setLoading] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'undetermined' | null>(null);
 
@@ -91,7 +94,10 @@ export default function SettingsScreen() {
   return (
     <ScrollView style={styles.container}>
       <Card style={styles.card}>
-        <Text style={styles.cardTitle}>Notifications</Text>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>Notifications</Text>
+          <MaterialCommunityIcons name="bell-outline" size={22} color={Colors.stoneGray} />
+        </View>
         {permissionStatus === 'denied' ? (
           <>
             <Text style={styles.permissionDenied}>
@@ -119,7 +125,48 @@ export default function SettingsScreen() {
       </Card>
 
       <Card style={styles.card}>
-        <Text style={styles.cardTitle}>Profile</Text>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>Appearance</Text>
+          <MaterialCommunityIcons name="palette-outline" size={22} color={Colors.stoneGray} />
+        </View>
+        <Text style={styles.label}>Color theme</Text>
+        <View style={styles.swatchRow}>
+          {THEME_ORDER.map((id) => {
+            const t = THEMES[id];
+            const isActive = id === themeId;
+            const isPending = id === pendingThemeId;
+            return (
+              <TouchableOpacity
+                key={id}
+                onPress={() => setThemeId(id)}
+                style={styles.swatchWrapper}
+                activeOpacity={0.7}
+                disabled={isPending}
+              >
+                <View style={[
+                  styles.swatch,
+                  { backgroundColor: t.primary },
+                  isActive && styles.swatchActive,
+                  isPending && styles.swatchPending,
+                ]}>
+                  {isPending ? (
+                    <ActivityIndicator size="small" color={Colors.white} />
+                  ) : isActive ? (
+                    <MaterialCommunityIcons name="check" size={18} color={Colors.white} />
+                  ) : null}
+                </View>
+                <Text style={[styles.swatchLabel, isActive && { color: t.primary }]}>{t.name}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </Card>
+
+      <Card style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>Profile</Text>
+          <MaterialCommunityIcons name="account-circle-outline" size={22} color={Colors.stoneGray} />
+        </View>
         <View style={styles.row}>
           <Text style={styles.label}>Name</Text>
           <Text style={styles.value}>{user.display_name}</Text>
@@ -135,7 +182,10 @@ export default function SettingsScreen() {
       </Card>
 
       <Card style={styles.card}>
-        <Text style={styles.cardTitle}>Account</Text>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>Account</Text>
+          <MaterialCommunityIcons name="shield-account-outline" size={22} color={Colors.stoneGray} />
+        </View>
         <Button
           title="Sign Out"
           variant="outline"
@@ -156,10 +206,15 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.lg,
     marginBottom: Spacing.md,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
   cardTitle: {
     ...Typography.h3,
     color: Colors.text,
-    marginBottom: Spacing.md,
   },
   label: {
     ...Typography.label,
@@ -186,5 +241,36 @@ const styles = StyleSheet.create({
   },
   row: {
     marginBottom: Spacing.md,
+  },
+  swatchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+  },
+  swatchWrapper: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  swatch: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatchActive: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  swatchPending: {
+    opacity: 0.6,
+  },
+  swatchLabel: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
   },
 });

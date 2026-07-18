@@ -1,6 +1,8 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Colors } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
 import TodayScreen from '../screens/TodayScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 import SettingsScreen from '../screens/SettingsScreen';
@@ -8,18 +10,22 @@ import GroupStackNavigator from './GroupStackNavigator';
 
 const Tab = createBottomTabNavigator();
 
+type IconProps = { color: string; size: number };
+
 export default function MainTabNavigator() {
+  const { theme } = useTheme();
+
   return (
     <Tab.Navigator
       screenOptions={{
         headerStyle: {
-          backgroundColor: Colors.primary,
+          backgroundColor: theme.primary,
         },
         headerTintColor: Colors.white,
         headerTitleStyle: {
           fontWeight: 'bold',
         },
-        tabBarActiveTintColor: Colors.primary,
+        tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: Colors.textSecondary,
         tabBarStyle: {
           backgroundColor: Colors.white,
@@ -31,7 +37,10 @@ export default function MainTabNavigator() {
         name="Today"
         component={TodayScreen}
         options={{
-          title: "Today's Reading",
+          title: 'Today',
+          tabBarIcon: ({ color, size }: IconProps) => (
+            <MaterialCommunityIcons name="book-open-page-variant" size={size} color={color} />
+          ),
         }}
       />
       <Tab.Screen
@@ -39,7 +48,10 @@ export default function MainTabNavigator() {
         component={GroupStackNavigator}
         options={{
           title: 'Groups',
-          headerShown: false, // GroupStackNavigator has its own header
+          headerShown: false,
+          tabBarIcon: ({ color, size }: IconProps) => (
+            <MaterialCommunityIcons name="account-group" size={size} color={color} />
+          ),
         }}
       />
       <Tab.Screen
@@ -47,6 +59,9 @@ export default function MainTabNavigator() {
         component={ProgressScreen}
         options={{
           title: 'Progress',
+          tabBarIcon: ({ color, size }: IconProps) => (
+            <MaterialCommunityIcons name="fire" size={size} color={color} />
+          ),
         }}
       />
       <Tab.Screen
@@ -54,6 +69,9 @@ export default function MainTabNavigator() {
         component={SettingsScreen}
         options={{
           title: 'Settings',
+          tabBarIcon: ({ color, size }: IconProps) => (
+            <MaterialCommunityIcons name="cog-outline" size={size} color={color} />
+          ),
         }}
       />
     </Tab.Navigator>
