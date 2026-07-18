@@ -5,7 +5,11 @@
 -- calculateStreakFromDates (src/services/stats.ts) doesn't recognize as
 -- a valid "current" entry, silently zeroing the user's streak.
 --
--- Mirrors the client's own PAST_DAYS_LIMIT/FUTURE_DAYS_LIMIT window.
+-- Upper bound only, matching FUTURE_DAYS_LIMIT. No lower bound: the app
+-- has months of legitimate history older than PAST_DAYS_LIMIT (30 days),
+-- and retroactive completion of old readings is intentional, expected
+-- behavior, not a threat — only completions dated in the future are the
+-- actual gap this migration closes.
 ALTER TABLE reading_completions
   ADD CONSTRAINT reading_date_within_window
-  CHECK (reading_date BETWEEN CURRENT_DATE - 30 AND CURRENT_DATE + 7);
+  CHECK (reading_date <= CURRENT_DATE + 7);
