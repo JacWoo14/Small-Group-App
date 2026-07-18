@@ -74,7 +74,9 @@ RootNavigator (Stack)
 | `src/hooks/useGroups.ts` | React Query hooks for all group + plan operations; `useMarkComplete` calls `dismissTodayNotification` in onSuccess |
 | `src/hooks/useProgress.ts` | `useUserStreak`, `useYesterdayRecap` |
 | `src/context/AuthContext.tsx` | `useAuth()` — session, user, profile, deep link handler; `handleProfileLoaded()` DRYs session/auth-state-change; registers push token on login |
-| `src/constants/theme.ts` | Colors, Typography, Spacing — single source of truth for styling |
+| `src/context/ThemeContext.tsx` | `useTheme()` — user-selectable accent color, Supabase-synced via `users.theme_id`; optimistic write with race-guarded revert on failure |
+| `src/constants/theme.ts` | Colors, Typography, Spacing, `THEMES`/`ThemeId`/`resolveThemeId` (theme presets) — single source of truth for styling |
+| `src/utils/dateNav.ts` | `clampDate` — shared date-boundary clamping for TodayScreen's nav arrows and swipe gesture |
 | `src/types/index.ts` | All TypeScript interfaces |
 | `supabase/functions/send-daily-reminders/index.ts` | Edge Function for daily push notifications; scheduled `*/15 * * * *`; sends per-group passage + "Yesterday: N/M" |
 

@@ -42,6 +42,56 @@ Work items deferred from plan reviews. Use this as the source of truth for upcom
 
 ---
 
+## P3 — Theme picker follow-ups (from /autoplan review, 2026-07-18)
+
+### Whole-App Accessibility Audit
+**What:** Screen reader (VoiceOver/TalkBack) and keyboard-nav pass across the whole app.
+**Why:** No stated a11y testing practice exists anywhere in the codebase; surfaced while reviewing the theme picker but applies app-wide, not just to that feature.
+**Effort:** M
+**Depends on:** Nothing
+
+### Theme Picker: Haptic Feedback + Selection Animation
+**What:** Add haptic tap feedback and a scale/bounce animation when selecting a theme swatch in Settings.
+**Why:** Small delight touch identified during CEO scope-expansion scan; not requested, not blocking.
+**Effort:** S
+**Depends on:** Theme picker Supabase-sync work landing first
+
+### Theme Picker: Auto-Suggest from System Light/Dark Mode
+**What:** Suggest a theme preset based on the device's system light/dark mode setting.
+**Why:** Delight idea from expansion scan.
+**Effort:** S-M
+**Depends on:** Nothing blocking
+
+### Theme Picker: "Surprise Me" Random Button
+**What:** A button that randomly picks one of the 4 theme presets.
+**Why:** Whimsy idea from expansion scan, fits a personal/learning project.
+**Effort:** S
+**Depends on:** Nothing
+
+### Theme Picker: Live Mini-Preview in Swatch Row
+**What:** Show a small live preview card in the swatch row before the user commits to a theme.
+**Why:** UX polish idea from expansion scan.
+**Effort:** S
+**Depends on:** Nothing
+
+### Theme Picker: Member Color Identity Rings (Approach C)
+**What:** Show each group member's chosen theme color as a ring/accent on their avatar in GroupDetailsScreen and GroupsScreen.
+**Why:** Turns theme_id into a small-group social identity cue once it's Supabase-synced — flagged by the independent second opinion during /office-hours as the "coolest version not yet considered." Near-zero extra infra once the Supabase sync work lands (same column, existing member-list queries).
+**Effort:** M
+**Depends on:** Confirming the `users` RLS SELECT policy allows a group member to read another member's `theme_id` (not verified — no local migration file found for this check).
+
+### Theme Picker: Fix Every-Launch Cold-Start Flash
+**What:** Paint the last-known theme immediately on app launch, before Supabase/Auth resolves, instead of briefly showing the default.
+**Why:** Currently happens on every app open (not just first login), undercutting the feature's "this is mine" premise — flagged by the Design phase's independent review.
+**Effort:** S-M
+**Depends on:** Theme picker Supabase-sync work landing first
+
+### Run /design-consultation for a Formal DESIGN.md
+**What:** Produce a proper design system document for this app.
+**Why:** No DESIGN.md currently exists; the theme.ts consolidation in this PR is a small step toward one, but a real system would benefit every future screen, not just Settings.
+**Effort:** M
+**Depends on:** Nothing
+
 ## Completed
 
 - [x] Phase 1: Auth (magic link, onboarding, SecureStore)
