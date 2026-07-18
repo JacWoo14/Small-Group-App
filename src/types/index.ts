@@ -1,3 +1,5 @@
+import { ThemeId } from '../constants/theme';
+
 // ==========================================
 // TYPES FOR SIMPLIFIED DATE-BASED ARCHITECTURE
 // ==========================================
@@ -12,6 +14,8 @@ export interface User {
   display_name: string;
   timezone: string;
   preferred_notification_time: string; // "HH:MM" format (e.g., "07:00")
+  push_token?: string | null;
+  theme_id?: ThemeId | null; // validate with resolveThemeId() before trusting — may be null/legacy-invalid
   created_at: string;
   updated_at: string;
 }

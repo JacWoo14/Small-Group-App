@@ -39,8 +39,7 @@ export const Colors = {
   border: '#E0DDD5',
   borderLight: '#F0EDE5',
 
-  // Convenience aliases
-  primary: '#C4941D',     // same as sacredGold
+  // Convenience alias
   text: '#2A2A2A',        // same as textPrimary
 };
 
@@ -109,6 +108,61 @@ export const Layout = {
   cardPadding: Spacing.md,
   maxWidth: 600, // Max width for content on tablets
 };
+
+/**
+ * User-selectable accent color presets (Settings > Appearance).
+ */
+export type ThemeId = 'sage' | 'navy' | 'burgundy' | 'slate';
+
+export type AppTheme = {
+  id: ThemeId;
+  name: string;
+  primary: string;
+  selectedBackground: string; // subtle tint for selected-state cards
+};
+
+export const THEMES: Record<ThemeId, AppTheme> = {
+  sage: {
+    id: 'sage',
+    name: 'Sage Forest',
+    primary: '#2D5C56',
+    selectedBackground: '#EEF5F4',
+  },
+  navy: {
+    id: 'navy',
+    name: 'Midnight Navy',
+    primary: '#1E3A6E',
+    selectedBackground: '#EEF1F8',
+  },
+  burgundy: {
+    id: 'burgundy',
+    name: 'Burgundy',
+    primary: '#6B2435',
+    selectedBackground: '#F8EEEF',
+  },
+  slate: {
+    id: 'slate',
+    name: 'Slate Blue',
+    primary: '#3A5480',
+    selectedBackground: '#EEF1F7',
+  },
+};
+
+export const THEME_ORDER: ThemeId[] = ['sage', 'navy', 'burgundy', 'slate'];
+
+export const DEFAULT_THEME_ID: ThemeId = 'sage';
+
+/**
+ * Validates a theme_id read from Supabase (or any external source): returns
+ * it if it's one of the known presets, otherwise falls back to the default.
+ * Guards against null/empty/legacy-invalid values crashing on THEMES[id].primary.
+ */
+export function resolveThemeId(raw: string | null | undefined): ThemeId {
+  if (raw && raw in THEMES) {
+    return raw as ThemeId;
+  }
+  return DEFAULT_THEME_ID;
+}
 
 /**
  * Typography styles for common text elements
