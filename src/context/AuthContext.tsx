@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User as AuthUser } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
+import * as Sentry from '@sentry/react-native';
 import { supabase } from '../services/supabase';
 import { ensureUserProfile } from '../services/auth';
 import { registerForPushNotifications } from '../services/notifications';
@@ -29,7 +30,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(profile);
       setNeedsOnboarding(false);
       if (registerPush) {
-        registerForPushNotifications(profile.id).catch(() => {});
+        // Errors here (e.g. getExpoPushTokenAsync throwing due to a device
+        // push service misconfiguration) must be visible — this call was
+        // previously a silent no-op catch, which made Android push
+        // registration failures undiagnosable.
+        registerForPushNotifications(profile.id).catch((error) => {
+          Sentry.captureException(error, { tags: { context: 'push_registration' } });
+        });
       }
     } else {
       setNeedsOnboarding(true);

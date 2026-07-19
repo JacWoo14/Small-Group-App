@@ -41,6 +41,11 @@ jest.mock('react-native', () => ({
   Platform: { OS: 'ios' }, // default: iOS; overridden per-test for android branch
 }));
 
+const mockCaptureMessage = jest.fn();
+jest.mock('@sentry/react-native', () => ({
+  captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
+}));
+
 // Supabase client mock — update().eq() returns no error by default
 const mockUpdate = jest.fn();
 const mockEq = jest.fn();
@@ -173,7 +178,7 @@ describe('registerForPushNotifications', () => {
     expect(mockSetChannel).not.toHaveBeenCalled();
   });
 
-  it('returns early without saving token when projectId is missing', async () => {
+  it('returns early without saving token when projectId is missing, and reports it', async () => {
     // Override only the expoConfig shape on the default-exported Constants object
     const original = (Constants as any).expoConfig;
     (Constants as any).expoConfig = { extra: { eas: {} } };
@@ -182,6 +187,12 @@ describe('registerForPushNotifications', () => {
     await registerForPushNotifications('user-7');
 
     expect(mockGetToken).not.toHaveBeenCalled();
+    // Regression: this used to fail completely silently, making a broken
+    // EAS project config indistinguishable from "user denied permission".
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('missing EAS projectId'),
+      'error'
+    );
 
     // Restore
     (Constants as any).expoConfig = original;
@@ -220,12 +231,18 @@ describe('registerForPushNotifications', () => {
     expect(mockEq).toHaveBeenCalledWith('id', userId);
   });
 
-  it('skips saving when token format is invalid', async () => {
+  it('skips saving when token format is invalid, and reports it', async () => {
     mockGetToken.mockResolvedValue({ data: 'invalid-token-format', type: 'expo' } as any);
 
     await registerForPushNotifications('user-11');
 
     expect(mockUpdate).not.toHaveBeenCalled();
+    // Regression: an unexpected token shape from the Expo SDK used to be
+    // indistinguishable from "device not registered" or "no permission".
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('unexpected token format'),
+      'error'
+    );
   });
 });
 

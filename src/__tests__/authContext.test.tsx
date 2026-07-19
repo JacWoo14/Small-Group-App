@@ -43,6 +43,11 @@ jest.mock('expo-linking', () => ({
   addEventListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
 }));
 
+const mockCaptureException = jest.fn();
+jest.mock('@sentry/react-native', () => ({
+  captureException: (...args: any[]) => mockCaptureException(...args),
+}));
+
 import { AuthProvider, useAuth } from '../context/AuthContext';
 
 const PROFILE = {
@@ -123,6 +128,23 @@ describe('AuthProvider push-registration gating', () => {
 
     expect(result.current.user).toBeNull();
     expect(mockRegisterForPushNotifications).not.toHaveBeenCalled();
+  });
+
+  it('reports push registration failures to Sentry instead of swallowing them (regression guard)', async () => {
+    mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
+    mockEnsureUserProfile.mockResolvedValue(PROFILE);
+    const registrationError = new Error('getExpoPushTokenAsync failed');
+    mockRegisterForPushNotifications.mockRejectedValue(registrationError);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.user).toEqual(PROFILE));
+    await waitFor(() =>
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        registrationError,
+        expect.objectContaining({ tags: expect.objectContaining({ context: 'push_registration' }) })
+      )
+    );
   });
 
   it('sets needsOnboarding when no profile exists yet, without registering for push', async () => {

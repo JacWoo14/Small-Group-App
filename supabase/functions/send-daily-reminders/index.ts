@@ -184,7 +184,15 @@ Deno.serve(async (_req) => {
   // -------------------------------------------------------------------
   // 6. Send to Expo Push API in batches of 100
   // -------------------------------------------------------------------
-  let totalSent = 0;
+  // NOTE: a ticket "ok" only means Expo *accepted* the message, not that it
+  // was delivered — real delivery failures (bad FCM/APNs credentials, etc.)
+  // surface later via the receipts API, which this function does not yet
+  // poll (see TODOS.md). Ticket-level errors below are the failures Expo
+  // can detect synchronously (bad token format, DeviceNotRegistered, and
+  // some credential/config errors) — logging all of them, not just
+  // DeviceNotRegistered, is what previously made this pipeline undiagnosable.
+  let totalAccepted = 0;
+  const ticketErrors: { userId: string; error: string; message?: string }[] = [];
   for (let i = 0; i < messages.length; i += EXPO_BATCH_SIZE) {
     const batch = messages.slice(i, i + EXPO_BATCH_SIZE);
     // Strip internal userId before sending to Expo
@@ -199,17 +207,29 @@ Deno.serve(async (_req) => {
     });
 
     const result = await response.json();
-    totalSent += batch.length;
 
-    // Clean up stale tokens by user ID so we don't accidentally clear the wrong user
     if (Array.isArray(result.data)) {
       for (let j = 0; j < result.data.length; j++) {
         const ticket = result.data[j];
-        if (ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered') {
-          invalidUserIds.push(batch[j].userId);
+        if (ticket.status === 'error') {
+          const errorCode = ticket.details?.error ?? 'Unknown';
+          ticketErrors.push({ userId: batch[j].userId, error: errorCode, message: ticket.message });
+          if (errorCode === 'DeviceNotRegistered') {
+            invalidUserIds.push(batch[j].userId);
+          }
+        } else {
+          totalAccepted += 1;
         }
       }
+    } else {
+      console.error('send-daily-reminders: unexpected Expo push response shape', result);
     }
+  }
+
+  if (ticketErrors.length > 0) {
+    // Visible in Supabase Edge Function logs — this is the diagnostic
+    // signal the pipeline previously had no way to produce.
+    console.error('send-daily-reminders: push ticket errors', JSON.stringify(ticketErrors));
   }
 
   if (invalidUserIds.length > 0) {
@@ -220,7 +240,12 @@ Deno.serve(async (_req) => {
   }
 
   return new Response(
-    JSON.stringify({ sent: totalSent, invalidTokensCleared: invalidUserIds.length }),
+    JSON.stringify({
+      sent: totalAccepted,
+      attempted: messages.length,
+      invalidTokensCleared: invalidUserIds.length,
+      errors: ticketErrors,
+    }),
     { status: 200 }
   );
 });

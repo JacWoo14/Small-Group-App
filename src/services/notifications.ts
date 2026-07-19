@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import * as Sentry from '@sentry/react-native';
 import { supabase } from './supabase';
 
 const VIBRATION_PATTERN_MS: number[] = [0, 250, 250, 250];
@@ -38,12 +39,24 @@ export async function registerForPushNotifications(userId: string): Promise<void
   }
 
   const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
-  if (!projectId) return;
+  if (!projectId) {
+    // Should never happen if app.json/eas.json are correct — a missing
+    // projectId means push can never work, so this is a config bug, not
+    // an expected skip. Surface it instead of failing silently.
+    Sentry.captureMessage('registerForPushNotifications: missing EAS projectId', 'error');
+    return;
+  }
 
   const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
 
   // Validate token format before saving to DB
-  if (!/^ExponentPushToken\[.+\]$/.test(tokenData.data)) return;
+  if (!/^ExponentPushToken\[.+\]$/.test(tokenData.data)) {
+    Sentry.captureMessage(
+      `registerForPushNotifications: unexpected token format from getExpoPushTokenAsync: ${tokenData.data}`,
+      'error'
+    );
+    return;
+  }
 
   const { error } = await supabase
     .from('users')
