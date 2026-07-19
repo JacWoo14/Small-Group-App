@@ -47,19 +47,6 @@ Supabase (PostgreSQL)
 - Deep link handler in `AuthContext.tsx` catches `myapp://auth/callback#access_token=...`
 - `emailRedirectTo` is hardcoded as `'myapp://auth/callback'` for mobile (do NOT use `Linking.createURL` — it returns the Expo Go URL even in production builds)
 
-### Navigation Structure
-```
-RootNavigator (Stack)
-  ├─ AuthScreen
-  ├─ OnboardingScreen
-  └─ MainTabNavigator (Bottom Tabs)
-      ├─ Today (TodayScreen)
-      ├─ Groups (GroupStackNavigator)
-      │    ├─ GroupList, GroupDetails, CreateGroup, JoinGroup, ImportPlan
-      ├─ Progress (ProgressScreen)
-      └─ Settings (SettingsScreen)
-```
-
 ## Key Files
 
 | File | Purpose |
