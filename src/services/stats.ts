@@ -58,20 +58,54 @@ export function calculateStreakFromDates(
 }
 
 /**
- * Calculate a user's current and longest reading streak across all groups.
- * A streak day counts if the user completed ANY group's reading on that date.
+ * Returns the calendar date (YYYY-MM-DD) that an ISO timestamp falls on,
+ * in the given IANA timezone. Exported for testing.
  */
-export async function getUserStreak(userId: string): Promise<StreakData> {
+export function toLocalDateString(isoTimestamp: string, timezone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(new Date(isoTimestamp));
+}
+
+/**
+ * Reduces raw completion rows to the set of reading_dates that count toward
+ * a streak: a date only counts if at least one group's completion for that
+ * date was actually submitted on that same calendar day (in the user's
+ * timezone). Retroactively backfilling old days (an intentional, supported
+ * feature — see reading_date_within_window migration) still records the
+ * completion for group accountability/recap purposes, but no longer
+ * inflates the streak to look identical to genuine day-by-day consistency.
+ * Exported for testing.
+ */
+export function filterSameDayCompletions(
+  rows: { reading_date: string; completed_at: string | null }[],
+  timezone: string
+): string[] {
+  const validDates = new Set<string>();
+  for (const row of rows) {
+    if (!row.completed_at) continue;
+    if (toLocalDateString(row.completed_at, timezone) === row.reading_date) {
+      validDates.add(row.reading_date);
+    }
+  }
+  return Array.from(validDates);
+}
+
+/**
+ * Calculate a user's current and longest reading streak across all groups.
+ * A streak day counts if the user completed ANY group's reading on that
+ * date AND did so on that same calendar day — retroactively backfilling
+ * old days doesn't count toward the streak (see filterSameDayCompletions).
+ */
+export async function getUserStreak(userId: string, timezone: string): Promise<StreakData> {
   const { data, error } = await supabase
     .from('reading_completions')
-    .select('reading_date')
+    .select('reading_date, completed_at')
     .eq('user_id', userId)
     .order('reading_date', { ascending: false });
 
   if (error) throw error;
   if (!data || data.length === 0) return { current: 0, longest: 0 };
 
-  const dates = data.map((r: any) => r.reading_date as string);
+  const dates = filterSameDayCompletions(data as any[], timezone);
   return calculateStreakFromDates(dates);
 }
 

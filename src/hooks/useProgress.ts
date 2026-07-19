@@ -7,7 +7,7 @@ export function useUserStreak() {
 
   return useQuery({
     queryKey: ['streak', user?.id],
-    queryFn: () => getUserStreak(user!.id),
+    queryFn: () => getUserStreak(user!.id, user!.timezone),
     enabled: !!user,
   });
 }
