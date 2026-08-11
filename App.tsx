@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Sentry from '@sentry/react-native';
 import * as Notifications from 'expo-notifications';
 import { AuthProvider } from './src/context/AuthContext';
+import { ThemeProvider } from './src/context/ThemeContext';
 import RootNavigator from './src/navigation/RootNavigator';
 
 Notifications.setNotificationHandler({
@@ -34,8 +35,10 @@ export default Sentry.wrap(function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <RootNavigator />
-        <StatusBar style="auto" />
+        <ThemeProvider>
+          <RootNavigator />
+          <StatusBar style="auto" />
+        </ThemeProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -41,13 +41,17 @@ Requires [bun](https://bun.sh) (`npm install -g bun`).
 
 - Magic link auth (Supabase, no password)
 - Onboarding flow
-- Groups: create with invite code, join, view members, leave, change plan
-- Plan import: paste tab-separated readings with dates
-- Today screen: shows group's reading for today, mark complete
+- Groups: create with invite code, join, view members, leave, change plan, transfer ownership
+- Plan import: dated (tab-separated) and dateless (start-date picker) formats
+- Today screen: swipeable/tappable date navigation (30 days back, 7 days forward), mark complete, retroactive completion on past dates
+- Color theme picker: choose an accent color (Settings > Appearance), synced across devices via Supabase
+- Push notifications: daily reading reminders, dismissed automatically on mark-complete
 - Progress screen: current streak + personal best
 - Group details: yesterday's recap (who completed, who missed)
 
 ## What's Not Built Yet
 
-- Push notifications (Phase 4)
-- App Store submission
+- App Store / Play Store submission
+- Notification time picker is restricted to any-minute selection, but the reminder cron only fires every 15 minutes
+
+See [TODOS.md](TODOS.md) for the full list of deferred work and [CHANGELOG.md](CHANGELOG.md) for release history.

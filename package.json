@@ -1,6 +1,6 @@
 {
   "name": "bible-accountability-app",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -12,7 +12,8 @@
   "jest": {
     "preset": "jest-expo",
     "testMatch": [
-      "**/__tests__/**/*.test.ts"
+      "**/__tests__/**/*.test.ts",
+      "**/__tests__/**/*.test.tsx"
     ],
     "setupFiles": [
       "./src/__tests__/setup.ts"
@@ -32,6 +33,7 @@
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
     "expo-device": "~8.0.10",
+    "expo-font": "~14.0.11",
     "expo-linking": "~8.0.11",
     "expo-notifications": "~0.32.16",
     "expo-secure-store": "~15.0.8",
@@ -45,9 +47,11 @@
     "react-native-web": "^0.21.0"
   },
   "devDependencies": {
+    "@testing-library/react-native": "^12.9.0",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.1.0",
     "jest-expo": "^55.0.9",
+    "react-test-renderer": "^19.1.0",
     "typescript": "~5.9.2"
   },
   "private": true

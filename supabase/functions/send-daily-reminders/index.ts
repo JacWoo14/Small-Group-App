@@ -26,11 +26,12 @@ Deno.serve(async (_req) => {
   // 0. Auth — reject requests missing the shared cron secret
   // -------------------------------------------------------------------
   const cronSecret = Deno.env.get('CRON_SECRET');
-  if (cronSecret) {
-    const authHeader = _req.headers.get('Authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-    }
+  if (!cronSecret) {
+    return new Response(JSON.stringify({ error: 'CRON_SECRET not configured' }), { status: 500 });
+  }
+  const authHeader = _req.headers.get('Authorization');
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }
 
   const now = new Date();
@@ -62,11 +63,12 @@ Deno.serve(async (_req) => {
       const localHour = parseInt(parts.find((p) => p.type === 'hour')!.value, 10);
       const localMinute = parseInt(parts.find((p) => p.type === 'minute')!.value, 10);
 
+      if (!user.preferred_notification_time) return false;
       const [prefHour, prefMinute] = user.preferred_notification_time.split(':').map(Number);
 
       const localTotal = localHour * 60 + localMinute;
       const prefTotal = prefHour * 60 + prefMinute;
-      return Math.abs(localTotal - prefTotal) < CRON_WINDOW_MINUTES;
+      return Math.abs(localTotal - prefTotal) < CRON_WINDOW_MINUTES / 2;
     } catch {
       return false;
     }
@@ -127,10 +129,11 @@ Deno.serve(async (_req) => {
   }
 
   // -------------------------------------------------------------------
-  // 5. Build a notification message for each user
+  // 5. Build one notification message per group per user
   // -------------------------------------------------------------------
-  const messages: { to: string; title: string; body: string; data: object }[] = [];
-  const invalidTokens: string[] = [];
+  type PushMessage = { to: string; title: string; body: string; data: object };
+  const messages: (PushMessage & { userId: string })[] = [];
+  const invalidUserIds: string[] = [];
 
   for (const { user, readings } of readingsPerUser) {
     if (readings.length === 0) continue;
@@ -151,7 +154,6 @@ Deno.serve(async (_req) => {
 
     if (groupsSeen.size === 0) continue;
 
-    const lines: string[] = [];
     for (const [groupId, { name, passages }] of groupsSeen) {
       const completedCount = completionsByGroup.get(groupId) ?? 0;
       const memberCount = membersByGroup.get(groupId) ?? 0;
@@ -160,21 +162,19 @@ Deno.serve(async (_req) => {
       const safePassage = sanitize(passages[0], MAX_PASSAGE_LEN);
       const passageText = safePassage + (passages.length > 1 ? ` +${passages.length - 1}` : '');
 
-      let line = `${safeName}: ${passageText}`;
+      let body = passageText;
       if (memberCount > 1) {
-        line += ` · Yesterday: ${completedCount}/${memberCount}`;
+        body += ` · Yesterday: ${completedCount}/${memberCount}`;
       }
-      lines.push(line);
+
+      messages.push({
+        to: user.push_token,
+        userId: user.id,
+        title: `📖 ${safeName}`,
+        body,
+        data: { type: 'daily_reminder', date: localDateStr, group_id: groupId },
+      });
     }
-
-    if (lines.length === 0) continue;
-
-    messages.push({
-      to: user.push_token,
-      title: '📖 Today\'s Reading',
-      body: lines.join('\n'),
-      data: { type: 'daily_reminder', date: localDateStr },
-    });
   }
 
   if (messages.length === 0) {
@@ -184,41 +184,68 @@ Deno.serve(async (_req) => {
   // -------------------------------------------------------------------
   // 6. Send to Expo Push API in batches of 100
   // -------------------------------------------------------------------
-  let totalSent = 0;
+  // NOTE: a ticket "ok" only means Expo *accepted* the message, not that it
+  // was delivered — real delivery failures (bad FCM/APNs credentials, etc.)
+  // surface later via the receipts API, which this function does not yet
+  // poll (see TODOS.md). Ticket-level errors below are the failures Expo
+  // can detect synchronously (bad token format, DeviceNotRegistered, and
+  // some credential/config errors) — logging all of them, not just
+  // DeviceNotRegistered, is what previously made this pipeline undiagnosable.
+  let totalAccepted = 0;
+  const ticketErrors: { userId: string; error: string; message?: string }[] = [];
   for (let i = 0; i < messages.length; i += EXPO_BATCH_SIZE) {
     const batch = messages.slice(i, i + EXPO_BATCH_SIZE);
+    // Strip internal userId before sending to Expo
+    const expoBatch: PushMessage[] = batch.map(({ userId: _userId, ...msg }) => msg);
     const response = await fetch(EXPO_PUSH_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body: JSON.stringify(batch),
+      body: JSON.stringify(expoBatch),
     });
 
     const result = await response.json();
-    totalSent += batch.length;
 
-    // Clean up stale tokens so we don't keep trying them
     if (Array.isArray(result.data)) {
       for (let j = 0; j < result.data.length; j++) {
         const ticket = result.data[j];
-        if (ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered') {
-          invalidTokens.push(batch[j].to);
+        if (ticket.status === 'error') {
+          const errorCode = ticket.details?.error ?? 'Unknown';
+          ticketErrors.push({ userId: batch[j].userId, error: errorCode, message: ticket.message });
+          if (errorCode === 'DeviceNotRegistered') {
+            invalidUserIds.push(batch[j].userId);
+          }
+        } else {
+          totalAccepted += 1;
         }
       }
+    } else {
+      console.error('send-daily-reminders: unexpected Expo push response shape', result);
     }
   }
 
-  if (invalidTokens.length > 0) {
+  if (ticketErrors.length > 0) {
+    // Visible in Supabase Edge Function logs — this is the diagnostic
+    // signal the pipeline previously had no way to produce.
+    console.error('send-daily-reminders: push ticket errors', JSON.stringify(ticketErrors));
+  }
+
+  if (invalidUserIds.length > 0) {
     await supabase
       .from('users')
       .update({ push_token: null })
-      .in('push_token', invalidTokens);
+      .in('id', invalidUserIds);
   }
 
   return new Response(
-    JSON.stringify({ sent: totalSent, invalidTokensCleared: invalidTokens.length }),
+    JSON.stringify({
+      sent: totalAccepted,
+      attempted: messages.length,
+      invalidTokensCleared: invalidUserIds.length,
+      errors: ticketErrors,
+    }),
     { status: 200 }
   );
 });

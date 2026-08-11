@@ -36,10 +36,11 @@ export async function markComplete(
  */
 export async function getTodaysReadings(
   userId: string,
-  _timezone: string
+  _timezone: string,
+  date: string
 ): Promise<TodayReading[]> {
   const { data, error } = await supabase
-    .rpc('get_all_todays_readings', { user_uuid: userId });
+    .rpc('get_all_todays_readings', { user_uuid: userId, p_date: date });
 
   if (error) throw error;
   if (!data || data.length === 0) return [];
@@ -61,12 +62,12 @@ export async function getTodaysReadings(
         is_public: row.plan_is_public,
         created_by: row.plan_created_by,
         description: null,
-        created_at: '',
+        created_at: row.plan_created_at ?? '',
       },
     },
     day_number: row.day_number ?? null,
     passages: Array.isArray(row.passages) ? row.passages : (row.passages ?? []),
-    completed: row.completed,
+    completed: !!row.completed,
   }));
 }
 

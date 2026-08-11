@@ -10,6 +10,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTheme } from '../../context/ThemeContext';
 import { useAvailablePlans, useCreateGroup } from '../../hooks/useGroups';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -23,6 +24,7 @@ type Nav = NativeStackNavigationProp<GroupStackParamList, 'CreateGroup'>;
 
 export default function CreateGroupScreen() {
   const navigation = useNavigation<Nav>();
+  const { theme } = useTheme();
   const { data: plans, isLoading: plansLoading } = useAvailablePlans();
   const createGroup = useCreateGroup();
 
@@ -68,8 +70,8 @@ export default function CreateGroupScreen() {
         <Text style={styles.successText}>
           You've been added as the first member. Share this invite code with others so they can join:
         </Text>
-        <TouchableOpacity onPress={handleCopyCode} style={styles.codeContainer}>
-          <Text style={styles.inviteCode}>{createdInviteCode}</Text>
+        <TouchableOpacity onPress={handleCopyCode} style={[styles.codeContainer, { borderColor: theme.primary }]}>
+          <Text style={[styles.inviteCode, { color: theme.primary }]}>{createdInviteCode}</Text>
           <Text style={styles.tapToCopy}>Tap to copy</Text>
         </TouchableOpacity>
         <Button
@@ -101,13 +103,13 @@ export default function CreateGroupScreen() {
               onPress={() => setSelectedPlanId(plan.id)}
               style={[
                 styles.planOption,
-                selectedPlanId === plan.id && styles.planOptionSelected,
+                selectedPlanId === plan.id && { borderColor: theme.primary, backgroundColor: theme.selectedBackground },
               ]}
             >
               <Text
                 style={[
                   styles.planName,
-                  selectedPlanId === plan.id && styles.planNameSelected,
+                  selectedPlanId === plan.id && { color: theme.primary },
                 ]}
               >
                 {plan.name}
@@ -124,7 +126,7 @@ export default function CreateGroupScreen() {
           onPress={() => navigation.navigate('ImportPlan', {})}
           style={styles.importLink}
         >
-          <Text style={styles.importLinkText}>+ Import a custom plan</Text>
+          <Text style={[styles.importLinkText, { color: theme.primary }]}>+ Import a custom plan</Text>
         </TouchableOpacity>
 
         {/* start_date is only meaningful for day-numbered plans.
@@ -164,7 +166,6 @@ const styles = StyleSheet.create({
   },
   importLinkText: {
     ...Typography.body,
-    color: Colors.primary,
   },
   planOption: {
     backgroundColor: Colors.white,
@@ -174,17 +175,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.border,
   },
-  planOptionSelected: {
-    borderColor: Colors.primary,
-    backgroundColor: '#FFF9EE',
-  },
   planName: {
     ...Typography.body,
     fontWeight: '600',
     color: Colors.text,
-  },
-  planNameSelected: {
-    color: Colors.primary,
   },
   planDescription: {
     ...Typography.caption,
@@ -216,13 +210,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.xl,
     borderWidth: 2,
-    borderColor: Colors.primary,
     borderStyle: 'dashed',
   },
   inviteCode: {
     fontSize: 36,
     fontWeight: '700',
-    color: Colors.primary,
     letterSpacing: 6,
   },
   tapToCopy: {

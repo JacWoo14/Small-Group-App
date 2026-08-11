@@ -20,7 +20,20 @@
       "Read(//c/Users/jacwo/.claude/skills/ship/review/**)",
       "Read(//c/Users/jacwo/.claude/skills/review/**)",
       "Bash(git add *)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git restore *)",
+      "Bash(node -e \"const a=require\\('./app.json'\\); console.log\\('version:', a.expo.version, '| buildNumber:', a.expo.ios?.buildNumber, '| versionCode:', a.expo.android?.versionCode\\)\")",
+      "Bash(git push *)",
+      "Bash(gh pr create --title 'Phase 4: Push notifications — daily reading reminders' --body ' *)",
+      "Bash(git diff *)",
+      "Bash(cat index.ts)",
+      "Bash(cat index.js)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/@expo/vector-icons/package.json'\\).version\\)\")",
+      "Bash(find /c/Users/jacwo -name \"adb.exe\" 2>/dev/null | head -5)",
+      "Read(//c/Users/jacwo/**)",
+      "Bash(npm why *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/expo-font/package.json'\\).version\\)\")"
     ]
   }
 }

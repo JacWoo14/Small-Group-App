@@ -1,4 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import * as Sentry from '@sentry/react-native';
 import { useAuth } from '../context/AuthContext';
 import { dismissTodayNotification } from '../services/notifications';
 import {
@@ -32,14 +34,15 @@ export function useGroupDetails(groupId: string) {
   });
 }
 
-export function useTodaysReadings() {
+export function useReadingsForDate(date: string) {
   const { user } = useAuth();
+  const today = format(new Date(), 'yyyy-MM-dd');
 
   return useQuery({
-    queryKey: ['todaysReadings', user?.id],
-    queryFn: () => getTodaysReadings(user!.id, user!.timezone),
+    queryKey: ['readings', user?.id, date],
+    queryFn: () => getTodaysReadings(user!.id, user!.timezone, date),
     enabled: !!user,
-    refetchInterval: 60 * 1000, // Refresh every minute
+    refetchInterval: date === today ? 60 * 1000 : false,
   });
 }
 
@@ -63,7 +66,7 @@ export function useCreateGroup() {
       createGroup(params.name, params.readingPlanId, params.startDate, user!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['groups', user?.id] });
-      queryClient.invalidateQueries({ queryKey: ['todaysReadings', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['readings', user?.id] });
     },
   });
 }
@@ -76,7 +79,7 @@ export function useJoinGroup() {
     mutationFn: (inviteCode: string) => joinGroup(inviteCode, user!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['groups', user?.id] });
-      queryClient.invalidateQueries({ queryKey: ['todaysReadings', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['readings', user?.id] });
     },
   });
 }
@@ -89,7 +92,7 @@ export function useLeaveGroup() {
     mutationFn: (groupId: string) => leaveGroup(groupId, user!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['groups', user?.id] });
-      queryClient.invalidateQueries({ queryKey: ['todaysReadings', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['readings', user?.id] });
     },
   });
 }
@@ -102,8 +105,13 @@ export function useMarkComplete() {
     mutationFn: (params: { groupId: string; readingDate: string }) =>
       markComplete(user!.id, params.groupId, params.readingDate),
     onSuccess: (_data, variables) => {
-      dismissTodayNotification().catch(() => {});
-      queryClient.invalidateQueries({ queryKey: ['todaysReadings', user?.id] });
+      const today = format(new Date(), 'yyyy-MM-dd');
+      if (variables.readingDate === today) {
+        dismissTodayNotification(variables.groupId).catch((error) => {
+          Sentry.captureException(error, { tags: { context: 'dismiss_notification' } });
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['readings', user?.id, variables.readingDate] });
       queryClient.invalidateQueries({ queryKey: ['group', variables.groupId] });
       queryClient.invalidateQueries({ queryKey: ['streak', user?.id] });
     },
@@ -130,7 +138,7 @@ export function useChangeGroupPlan(groupId: string) {
     mutationFn: (newPlanId: string) => changeGroupPlan(groupId, newPlanId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['group', groupId] });
-      queryClient.invalidateQueries({ queryKey: ['todaysReadings'] });
+      queryClient.invalidateQueries({ queryKey: ['readings'] });
     },
   });
 }

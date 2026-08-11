@@ -76,12 +76,12 @@ export async function createUserProfile(params: {
 }) {
   const { data, error } = await supabase
     .from('users')
-    .insert({
+    .upsert({
       id: params.id,
       email: params.email,
       display_name: params.displayName,
       preferred_notification_time: params.notificationTime,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, // Auto-detect timezone
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     })
     .select()
     .single();

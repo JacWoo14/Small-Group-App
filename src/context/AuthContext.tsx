@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User as AuthUser } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
+import * as Sentry from '@sentry/react-native';
 import { supabase } from '../services/supabase';
 import { ensureUserProfile } from '../services/auth';
 import { registerForPushNotifications } from '../services/notifications';
@@ -24,11 +25,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
-  function handleProfileLoaded(profile: User | null) {
+  function handleProfileLoaded(profile: User | null, registerPush = false) {
     if (profile) {
       setUser(profile);
       setNeedsOnboarding(false);
-      registerForPushNotifications(profile.id).catch(() => {});
+      if (registerPush) {
+        // Errors here (e.g. getExpoPushTokenAsync throwing due to a device
+        // push service misconfiguration) must be visible — this call was
+        // previously a silent no-op catch, which made Android push
+        // registration failures undiagnosable.
+        registerForPushNotifications(profile.id).catch((error) => {
+          Sentry.captureException(error, { tags: { context: 'push_registration' } });
+        });
+      }
     } else {
       setNeedsOnboarding(true);
     }
@@ -42,7 +51,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
+        ensureUserProfile(session.user.id, session.user.email!).then(
+          (profile) => handleProfileLoaded(profile, true)
+        );
       } else {
         setLoading(false);
       }
@@ -66,12 +77,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes (login, logout, token refresh)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
+        ensureUserProfile(session.user.id, session.user.email!).then(
+          (profile) => handleProfileLoaded(profile, event === 'SIGNED_IN')
+        );
       } else {
         // User signed out
         setUser(null);

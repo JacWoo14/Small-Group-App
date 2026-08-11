@@ -8,12 +8,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as Clipboard from 'expo-clipboard';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useGroupDetails, useLeaveGroup, useChangeGroupPlan, useAvailablePlans, useTransferGroupOwnership } from '../../hooks/useGroups';
 import { useYesterdayRecap } from '../../hooks/useProgress';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Colors, Typography, Spacing } from '../../constants/theme';
@@ -28,6 +30,7 @@ export default function GroupDetailsScreen() {
   const navigation = useNavigation<Nav>();
   const { user } = useAuth();
   const { groupId } = route.params;
+  const { theme } = useTheme();
   const { data: group, isLoading, error } = useGroupDetails(groupId);
   const { data: recap } = useYesterdayRecap(groupId);
   const leaveGroup = useLeaveGroup();
@@ -81,7 +84,7 @@ export default function GroupDetailsScreen() {
   if (isLoading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
@@ -118,7 +121,7 @@ export default function GroupDetailsScreen() {
               <Text style={styles.label}>Plan</Text>
               {isCreator && (
                 <TouchableOpacity onPress={() => setIsChangingPlan(!isChangingPlan)}>
-                  <Text style={styles.changeLink}>
+                  <Text style={[styles.changeLink, { color: theme.primary }]}>
                     {isChangingPlan ? 'Cancel' : 'Change'}
                   </Text>
                 </TouchableOpacity>
@@ -143,7 +146,7 @@ export default function GroupDetailsScreen() {
                   style={styles.planOption}
                   onPress={() => navigation.navigate('ImportPlan', { groupId })}
                 >
-                  <Text style={[styles.planOptionName, { color: Colors.primary }]}>
+                  <Text style={[styles.planOptionName, { color: theme.primary }]}>
                     + Import a new plan
                   </Text>
                 </TouchableOpacity>
@@ -159,10 +162,14 @@ export default function GroupDetailsScreen() {
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Invite Code</Text>
-          <TouchableOpacity onPress={handleCopyCode}>
-            <Text style={styles.codeValue}>
-              {group.invite_code}  <Text style={styles.copyHint}>(tap to copy)</Text>
-            </Text>
+          <TouchableOpacity onPress={handleCopyCode} style={styles.codeRow}>
+            <Text style={[styles.codeValue, { color: theme.primary }]}>{group.invite_code}</Text>
+            <MaterialCommunityIcons
+              name="content-copy"
+              size={16}
+              color={theme.primary}
+              style={styles.copyIcon}
+            />
           </TouchableOpacity>
         </View>
       </Card>
@@ -174,18 +181,34 @@ export default function GroupDetailsScreen() {
         </Text>
         {members.map((member: GroupMemberDetails) => (
           <View key={member.user_id} style={styles.memberRow}>
-            <Text style={styles.memberName}>
-              {member.display_name}
-              {member.user_id === user?.id ? ' (you)' : ''}
-            </Text>
-            <Text
-              style={[
-                styles.memberStatus,
-                member.completed_today ? styles.completedStatus : styles.pendingStatus,
-              ]}
-            >
-              {member.completed_today ? 'Done' : 'Pending'}
-            </Text>
+            <View style={styles.memberNameRow}>
+              <MaterialCommunityIcons
+                name="account-circle-outline"
+                size={20}
+                color={Colors.stoneGray}
+                style={styles.memberIcon}
+              />
+              <Text style={styles.memberName}>
+                {member.display_name}
+                {member.user_id === user?.id ? ' (you)' : ''}
+              </Text>
+            </View>
+            <View style={[
+              styles.memberBadge,
+              member.completed_today ? styles.completedBadge : styles.pendingBadge,
+            ]}>
+              <MaterialCommunityIcons
+                name={member.completed_today ? 'check-circle' : 'clock-outline'}
+                size={13}
+                color={member.completed_today ? Colors.success : Colors.textTertiary}
+              />
+              <Text style={[
+                styles.badgeText,
+                member.completed_today ? styles.completedBadgeText : styles.pendingBadgeText,
+              ]}>
+                {member.completed_today ? 'Done' : 'Pending'}
+              </Text>
+            </View>
           </View>
         ))}
       </Card>
@@ -197,7 +220,7 @@ export default function GroupDetailsScreen() {
             <Text style={styles.cardTitle}>Ownership</Text>
             {members.filter((m) => m.user_id !== user?.id).length > 0 && (
               <TouchableOpacity onPress={() => setIsTransferringOwnership(!isTransferringOwnership)}>
-                <Text style={styles.changeLink}>
+                <Text style={[styles.changeLink, { color: theme.primary }]}>
                   {isTransferringOwnership ? 'Cancel' : 'Transfer'}
                 </Text>
               </TouchableOpacity>
@@ -232,18 +255,23 @@ export default function GroupDetailsScreen() {
         ) : (
           recap.completions.map((member) => (
             <View key={member.user_id} style={styles.memberRow}>
-              <Text style={styles.memberName}>
-                {member.display_name}
-                {member.user_id === user?.id ? ' (you)' : ''}
-              </Text>
-              <Text
-                style={[
-                  styles.memberStatus,
-                  member.completed ? styles.completedStatus : styles.missedStatus,
-                ]}
-              >
-                {member.completed ? '✓' : '—'}
-              </Text>
+              <View style={styles.memberNameRow}>
+                <MaterialCommunityIcons
+                  name="account-circle-outline"
+                  size={20}
+                  color={Colors.stoneGray}
+                  style={styles.memberIcon}
+                />
+                <Text style={styles.memberName}>
+                  {member.display_name}
+                  {member.user_id === user?.id ? ' (you)' : ''}
+                </Text>
+              </View>
+              <MaterialCommunityIcons
+                name={member.completed ? 'check-circle' : 'minus-circle-outline'}
+                size={20}
+                color={member.completed ? Colors.success : Colors.lightGray}
+              />
             </View>
           ))
         )}
@@ -293,7 +321,6 @@ const styles = StyleSheet.create({
   },
   changeLink: {
     ...Typography.caption,
-    color: Colors.primary,
     fontWeight: '600',
   },
   planPicker: {
@@ -324,17 +351,18 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.text,
   },
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
   codeValue: {
     ...Typography.body,
-    color: Colors.primary,
     fontWeight: '700',
     letterSpacing: 2,
   },
-  copyHint: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
-    fontWeight: '400',
-    letterSpacing: 0,
+  copyIcon: {
+    marginTop: 1,
   },
   memberRow: {
     flexDirection: 'row',
@@ -344,29 +372,41 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
   },
+  memberNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  memberIcon: {
+    marginRight: Spacing.xs,
+  },
   memberName: {
     ...Typography.body,
     color: Colors.text,
   },
-  memberStatus: {
-    ...Typography.caption,
-    fontWeight: '600',
+  memberBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 4,
-    overflow: 'hidden',
+    paddingVertical: 3,
+    borderRadius: 12,
   },
-  completedStatus: {
-    color: Colors.success,
+  completedBadge: {
     backgroundColor: '#E8F5E9',
   },
-  pendingStatus: {
-    color: Colors.textTertiary,
+  pendingBadge: {
     backgroundColor: '#F5F5F5',
   },
-  missedStatus: {
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  completedBadgeText: {
+    color: Colors.success,
+  },
+  pendingBadgeText: {
     color: Colors.textTertiary,
-    backgroundColor: '#F5F5F5',
   },
   recapEmpty: {
     ...Typography.body,
