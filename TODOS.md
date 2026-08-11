@@ -4,6 +4,17 @@ Work items deferred from plan reviews. Use this as the source of truth for upcom
 
 ---
 
+## P0 — Run immediately after merge
+
+### Run IDOR-fix migrations against production Supabase
+**What:** Run `supabase/migrations/20260616_get_all_todays_readings_add_date_param.sql` and `supabase/migrations/20260718_fix_get_all_todays_readings_idor.sql` against the live database via the Supabase SQL Editor (this repo applies migrations manually, no automated runner).
+**Why:** Surfaced by /ship adversarial review (2026-08-10). Until these run, `get_all_todays_readings` (SECURITY DEFINER) trusts the caller-supplied `user_uuid` with no check that it matches the authenticated caller — any authenticated user could pass another user's UUID and read their group names, invite codes, reading plans, and completion status. "Merged to main" does not mean "deployed" for this repo's manual-migration workflow.
+**How:** Supabase Dashboard → SQL Editor → run both files in order. Verify with a quick probe: authenticate as user A, call the RPC with user B's UUID, confirm zero rows returned.
+**Effort:** XS (a few minutes)
+**Depends on:** Nothing — do this first, before anything else in this release
+
+---
+
 ## P1 — Must ship before real users onboard
 
 ---
@@ -23,6 +34,22 @@ Work items deferred from plan reviews. Use this as the source of truth for upcom
 **Depends on:** Nothing — push notifications shipped in Phase 4
 
 ---
+
+## P3 — Code health
+
+### Streak calc uses stale signup-time timezone, not device-live timezone
+**What:** `getUserStreak` converts `completed_at` to local dates using `users.timezone` (captured once at signup), while `reading_date`/"today" throughout the app is derived from the device's live current timezone. The new same-day-only streak logic (this branch) compares the two.
+**Why:** Surfaced by /ship red-team review (2026-08-10). A user who signs up in one timezone then travels without re-onboarding could complete a reading on the correct calendar day but have it silently excluded from their streak, since the stored `users.timezone` and the device's live timezone disagree. Narrow edge case (active cross-timezone travel) for a small closed-group app — not blocking, but worth fixing properly rather than patching.
+**How:** Either refresh `users.timezone` on each login (e.g. in `handleProfileLoaded`) so it tracks the device's current zone, or unify the timezone source used by `filterSameDayCompletions` with the one used for `reading_date`/`todayString()` elsewhere.
+**Effort:** S-M
+**Depends on:** Nothing
+
+### Consolidate duplicated "today" date-string helper
+**What:** `format(new Date(), 'yyyy-MM-dd')` is computed independently in `src/utils/dateNav.ts`, `src/screens/TodayScreen.tsx`, and twice in `src/hooks/useGroups.ts`.
+**Why:** Surfaced during /ship pre-landing review (2026-08-10). Not a current bug — all 4 copies compute the same thing consistently today — but future changes to "today" logic (e.g. more precise timezone handling) would need to touch all 4 spots, and it's easy to miss one.
+**How:** Export a single `todayString()` helper (already exists locally in TodayScreen.tsx) from `src/utils/dateNav.ts` and import it everywhere else.
+**Effort:** S
+**Depends on:** Nothing
 
 ## P3 — Phase 4 polish
 
