@@ -111,7 +111,7 @@ User picks a start date in the UI; sequential dates are assigned from that point
 
 ## What's Not Built Yet
 - App Store / Play Store submission
-- Notification time picker restricted to hour-only options (cron fires every 15 min; picker currently allows any minute)
+- Notification time picker should be restricted to hour-only options (cron fires every 15 min; picker currently allows any minute)
 
 ## Skill routing
 

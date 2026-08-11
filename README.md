@@ -54,4 +54,4 @@ Requires [bun](https://bun.sh) (`npm install -g bun`).
 - App Store / Play Store submission
 - Notification time picker is restricted to any-minute selection, but the reminder cron only fires every 15 minutes
 
-See [TODOS.md](TODOS.md) for the full list of deferred work.
+See [TODOS.md](TODOS.md) for the full list of deferred work and [CHANGELOG.md](CHANGELOG.md) for release history.
