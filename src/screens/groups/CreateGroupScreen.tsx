@@ -103,14 +103,12 @@ export default function CreateGroupScreen() {
               onPress={() => setSelectedPlanId(plan.id)}
               style={[
                 styles.planOption,
-                selectedPlanId === plan.id && styles.planOptionSelected,
                 selectedPlanId === plan.id && { borderColor: theme.primary, backgroundColor: theme.selectedBackground },
               ]}
             >
               <Text
                 style={[
                   styles.planName,
-                  selectedPlanId === plan.id && styles.planNameSelected,
                   selectedPlanId === plan.id && { color: theme.primary },
                 ]}
               >
@@ -177,15 +175,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.border,
   },
-  planOptionSelected: {
-    // borderColor and backgroundColor applied dynamically via theme inline style
-  },
   planName: {
     ...Typography.body,
     fontWeight: '600',
     color: Colors.text,
   },
-  planNameSelected: {},
   planDescription: {
     ...Typography.caption,
     color: Colors.textSecondary,

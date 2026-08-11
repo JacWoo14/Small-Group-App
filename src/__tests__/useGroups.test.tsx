@@ -30,6 +30,11 @@ jest.mock('../services/notifications', () => ({
   dismissTodayNotification: (...args: any[]) => mockDismissTodayNotification(...args),
 }));
 
+const mockCaptureException = jest.fn();
+jest.mock('@sentry/react-native', () => ({
+  captureException: (...args: any[]) => mockCaptureException(...args),
+}));
+
 import { useReadingsForDate, useMarkComplete } from '../hooks/useGroups';
 
 const TODAY = format(new Date(), 'yyyy-MM-dd');
@@ -67,6 +72,38 @@ describe('useReadingsForDate', () => {
 
     expect(result.current.fetchStatus).toBe('idle');
     expect(mockGetTodaysReadings).not.toHaveBeenCalled();
+  });
+
+  it('auto-refetches on an interval for today', async () => {
+    jest.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useReadingsForDate(TODAY), { wrapper });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGetTodaysReadings).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        jest.advanceTimersByTime(60 * 1000);
+      });
+      await waitFor(() => expect(mockGetTodaysReadings).toHaveBeenCalledTimes(2));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not auto-refetch on an interval for a past date', async () => {
+    jest.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useReadingsForDate(PAST_DATE), { wrapper });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGetTodaysReadings).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        jest.advanceTimersByTime(5 * 60 * 1000);
+      });
+      expect(mockGetTodaysReadings).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
@@ -110,5 +147,19 @@ describe('useMarkComplete', () => {
         await result.current.mutateAsync({ groupId: 'group-1', readingDate: TODAY });
       })
     ).rejects.toThrow('Already completed');
+  });
+
+  it('reports a notification-dismiss failure to Sentry instead of swallowing it (regression guard)', async () => {
+    mockDismissTodayNotification.mockRejectedValue(new Error('dismiss failed'));
+    const { result } = renderHook(() => useMarkComplete(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ groupId: 'group-1', readingDate: TODAY });
+    });
+
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: expect.objectContaining({ context: 'dismiss_notification' }) })
+    );
   });
 });

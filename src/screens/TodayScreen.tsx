@@ -16,7 +16,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useReadingsForDate, useMarkComplete } from '../hooks/useGroups';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
-import { Colors, Typography, Spacing } from '../constants/theme';
+import { Colors, Typography, Spacing, FontWeights } from '../constants/theme';
 import { TodayReading, Passage } from '../types';
 import { clampDate, PAST_DAYS_LIMIT, FUTURE_DAYS_LIMIT } from '../utils/dateNav';
 
@@ -113,7 +113,7 @@ export default function TodayScreen() {
             onPress={() => !isToday && setSelectedDate(today)}
             disabled={isToday}
           >
-            <Text style={[styles.dateLabel, isFuture && styles.dateLabelFuture]}>
+            <Text style={[styles.dateLabel, isFuture && { color: theme.primary }]}>
               {displayDate}
             </Text>
             {!isToday && (
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
   dateArrow: {
     fontSize: 32,
     lineHeight: 36,
-    fontWeight: '300',
+    fontWeight: FontWeights.regular,
   },
   dateArrowDisabled: {
     color: Colors.lightGray,
@@ -256,9 +256,6 @@ const styles = StyleSheet.create({
   dateLabel: {
     ...Typography.h4,
     color: Colors.deepEarth,
-  },
-  dateLabelFuture: {
-    color: Colors.spiritualBlue,
   },
   dateSubLabel: {
     ...Typography.caption,

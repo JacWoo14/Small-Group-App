@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import * as Sentry from '@sentry/react-native';
 import { useAuth } from '../context/AuthContext';
 import { dismissTodayNotification } from '../services/notifications';
 import {
@@ -106,7 +107,9 @@ export function useMarkComplete() {
     onSuccess: (_data, variables) => {
       const today = format(new Date(), 'yyyy-MM-dd');
       if (variables.readingDate === today) {
-        dismissTodayNotification(variables.groupId).catch(() => {});
+        dismissTodayNotification(variables.groupId).catch((error) => {
+          Sentry.captureException(error, { tags: { context: 'dismiss_notification' } });
+        });
       }
       queryClient.invalidateQueries({ queryKey: ['readings', user?.id, variables.readingDate] });
       queryClient.invalidateQueries({ queryKey: ['group', variables.groupId] });

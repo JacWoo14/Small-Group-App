@@ -154,6 +154,21 @@ describe('setThemeId — race guard', () => {
   });
 });
 
+describe('setThemeId — no authenticated user', () => {
+  it('is a no-op when called with no user signed in', async () => {
+    mockUser = null;
+    const { result } = renderHook(() => useTheme(), { wrapper });
+
+    await act(async () => {
+      await result.current.setThemeId('navy');
+    });
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockSetUser).not.toHaveBeenCalled();
+    expect(mockAlert).not.toHaveBeenCalled();
+  });
+});
+
 describe('setThemeId — resync on account switch', () => {
   it('resyncs themeId when the authenticated user changes within one session', async () => {
     const { result, rerender } = renderHook(() => useTheme(), { wrapper });

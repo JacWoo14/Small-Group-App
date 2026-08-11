@@ -129,7 +129,7 @@ Deno.serve(async (_req) => {
   }
 
   // -------------------------------------------------------------------
-  // 5. Build a notification message for each user
+  // 5. Build one notification message per group per user
   // -------------------------------------------------------------------
   type PushMessage = { to: string; title: string; body: string; data: object };
   const messages: (PushMessage & { userId: string })[] = [];
