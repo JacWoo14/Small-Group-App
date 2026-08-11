@@ -158,7 +158,7 @@ export const DEFAULT_THEME_ID: ThemeId = 'sage';
  * Guards against null/empty/legacy-invalid values crashing on THEMES[id].primary.
  */
 export function resolveThemeId(raw: string | null | undefined): ThemeId {
-  if (raw && raw in THEMES) {
+  if (raw && Object.prototype.hasOwnProperty.call(THEMES, raw)) {
     return raw as ThemeId;
   }
   return DEFAULT_THEME_ID;

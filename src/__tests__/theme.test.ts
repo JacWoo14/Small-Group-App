@@ -23,4 +23,13 @@ describe('resolveThemeId', () => {
     expect(resolveThemeId('burgundy')).toBe('burgundy');
     expect(resolveThemeId('slate')).toBe('slate');
   });
+
+  it('falls back to the default theme for Object.prototype property names (regression guard)', () => {
+    // resolveThemeId previously used the `in` operator, which checks the
+    // prototype chain — 'constructor'/'toString'/'hasOwnProperty' would all
+    // incorrectly resolve as "valid" theme ids and break THEMES[id].primary.
+    expect(resolveThemeId('constructor')).toBe(DEFAULT_THEME_ID);
+    expect(resolveThemeId('toString')).toBe(DEFAULT_THEME_ID);
+    expect(resolveThemeId('hasOwnProperty')).toBe(DEFAULT_THEME_ID);
+  });
 });

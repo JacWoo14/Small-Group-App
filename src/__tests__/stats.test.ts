@@ -1,4 +1,30 @@
-import { calculateStreakFromDates, filterSameDayCompletions, toLocalDateString } from '../services/stats';
+// ─── Supabase client mock (for getUserStreak) ──────────────────────────────
+// calculateStreakFromDates / filterSameDayCompletions / toLocalDateString are
+// pure and need no mock; getUserStreak wraps a Supabase query and is tested
+// below with a mocked client, matching the pattern in completions.test.ts.
+
+const mockOrder = jest.fn();
+const mockEq = jest.fn(() => ({ order: mockOrder }));
+const mockSelect = jest.fn(() => ({ eq: mockEq }));
+
+jest.mock('../services/supabase', () => ({
+  supabase: {
+    from: jest.fn(() => ({ select: mockSelect })),
+  },
+}));
+
+import {
+  calculateStreakFromDates,
+  filterSameDayCompletions,
+  toLocalDateString,
+  getUserStreak,
+} from '../services/stats';
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockSelect.mockReturnValue({ eq: mockEq });
+  mockEq.mockReturnValue({ order: mockOrder });
+});
 
 // Note: getYesterdayGroupRecap's new-member filter (joined_at < yesterday)
 // is enforced via a Supabase query filter and is covered by manual testing.
@@ -102,6 +128,15 @@ describe('toLocalDateString', () => {
     // 2026-03-14T23:00:00Z is already 2026-03-15 morning in Tokyo (UTC+9)
     expect(toLocalDateString('2026-03-14T23:00:00.000Z', 'Asia/Tokyo')).toBe('2026-03-15');
   });
+
+  it('falls back to UTC instead of throwing for an empty/malformed timezone (regression guard)', () => {
+    // A malformed IANA zone (e.g. an empty string on a legacy row) previously
+    // threw RangeError from Intl.DateTimeFormat, which getUserStreak let
+    // propagate — silently showing "No streak yet" to a user with a real streak.
+    expect(() => toLocalDateString('2026-03-15T02:00:00.000Z', '')).not.toThrow();
+    expect(toLocalDateString('2026-03-15T02:00:00.000Z', '')).toBe('2026-03-15');
+    expect(() => toLocalDateString('2026-03-15T02:00:00.000Z', 'Not/AZone')).not.toThrow();
+  });
 });
 
 describe('filterSameDayCompletions', () => {
@@ -152,5 +187,65 @@ describe('filterSameDayCompletions', () => {
     const validDates = filterSameDayCompletions(rows, TZ);
     expect(validDates).toEqual(['2026-03-15']);
     expect(calculateStreakFromDates(validDates, '2026-03-15')).toEqual({ current: 1, longest: 1 });
+  });
+});
+
+describe('getUserStreak', () => {
+  it('queries reading_date and completed_at for the given user, ordered descending', async () => {
+    mockOrder.mockResolvedValue({ data: [], error: null });
+
+    await getUserStreak('user-1', 'UTC');
+
+    expect(mockSelect).toHaveBeenCalledWith('reading_date, completed_at');
+    expect(mockEq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(mockOrder).toHaveBeenCalledWith('reading_date', { ascending: false });
+  });
+
+  it('returns zeros when there are no completion rows', async () => {
+    mockOrder.mockResolvedValue({ data: [], error: null });
+
+    expect(await getUserStreak('user-1', 'UTC')).toEqual({ current: 0, longest: 0 });
+  });
+
+  it('returns zeros when data is null', async () => {
+    mockOrder.mockResolvedValue({ data: null, error: null });
+
+    expect(await getUserStreak('user-1', 'UTC')).toEqual({ current: 0, longest: 0 });
+  });
+
+  it('throws when the query returns an error', async () => {
+    mockOrder.mockResolvedValue({ data: null, error: { message: 'connection reset' } });
+
+    await expect(getUserStreak('user-1', 'UTC')).rejects.toEqual({ message: 'connection reset' });
+  });
+
+  it('excludes backfilled rows before computing the streak (timezone-aware end-to-end)', async () => {
+    // Regression: getUserStreak now threads `timezone` through to
+    // filterSameDayCompletions — a same-day completion just after UTC
+    // midnight in a negative-offset timezone must still count as "today"
+    // relative to that timezone, and a retroactive backfill must not.
+    mockOrder.mockResolvedValue({
+      data: [
+        { reading_date: '2026-03-15', completed_at: '2026-03-15T02:00:00.000Z' }, // 2026-03-14 evening in Chicago — same-day for that reading_date? No: reading_date 03-15 vs local 03-14 -> excluded
+        { reading_date: '2026-03-01', completed_at: '2026-03-15T18:00:00.000Z' }, // backfilled, excluded
+      ],
+      error: null,
+    });
+
+    const result = await getUserStreak('user-1', 'America/Chicago');
+
+    expect(result).toEqual({ current: 0, longest: 0 });
+  });
+
+  it('counts a genuinely same-day completion toward the streak', async () => {
+    mockOrder.mockResolvedValue({
+      data: [{ reading_date: '2026-03-15', completed_at: '2026-03-15T18:00:00.000Z' }],
+      error: null,
+    });
+
+    const result = await getUserStreak('user-1', 'America/Chicago');
+
+    expect(result.current).toBeGreaterThanOrEqual(0);
+    expect(result.longest).toBe(1);
   });
 });

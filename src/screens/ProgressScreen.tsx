@@ -15,7 +15,7 @@ import { format } from 'date-fns';
 
 export default function ProgressScreen() {
   const { theme } = useTheme();
-  const { data: streak, isLoading } = useUserStreak();
+  const { data: streak, isLoading, error } = useUserStreak();
   const isNewRecord = streak && streak.current > 0 && streak.current >= streak.longest;
 
   return (
@@ -29,6 +29,18 @@ export default function ProgressScreen() {
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={theme.primary} />
         </View>
+      ) : error ? (
+        <Card style={styles.card}>
+          <View style={styles.emptyState}>
+            <MaterialCommunityIcons
+              name="alert-circle-outline"
+              size={64}
+              color={Colors.lightGray}
+            />
+            <Text style={styles.emptyTitle}>Couldn't load your streak</Text>
+            <Text style={styles.emptyText}>Pull to refresh or try again later.</Text>
+          </View>
+        </Card>
       ) : !streak || streak.current === 0 ? (
         <Card style={styles.card}>
           <View style={styles.emptyState}>
