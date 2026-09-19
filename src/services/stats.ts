@@ -57,16 +57,17 @@ export function calculateStreakFromDates(
   return { current, longest };
 }
 
-const VALID_TIMEZONES = new Set(Intl.supportedValuesOf('timeZone'));
-
 /**
  * Returns the calendar date (YYYY-MM-DD) that an ISO timestamp falls on,
  * in the given IANA timezone. Falls back to UTC for missing/malformed
  * timezone values (e.g. a legacy row) instead of throwing. Exported for testing.
  */
 export function toLocalDateString(isoTimestamp: string, timezone: string): string {
-  const tz = VALID_TIMEZONES.has(timezone) ? timezone : 'UTC';
-  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(isoTimestamp));
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(new Date(isoTimestamp));
+  } catch {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(new Date(isoTimestamp));
+  }
 }
 
 /**
