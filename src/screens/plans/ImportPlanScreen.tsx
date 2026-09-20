@@ -22,16 +22,16 @@ import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
 import { DatePicker } from '../../components/DatePicker';
 import { Colors, Typography, Spacing } from '../../constants/theme';
-import { GroupStackParamList } from '../../types';
+import { PlanStackParamList } from '../../types';
 import { format } from 'date-fns';
 
-type Nav = NativeStackNavigationProp<GroupStackParamList, 'ImportPlan'>;
-type RouteProps = NativeStackScreenProps<GroupStackParamList, 'ImportPlan'>['route'];
+type Nav = NativeStackNavigationProp<PlanStackParamList, 'ImportPlan'>;
+type RouteProps = NativeStackScreenProps<PlanStackParamList, 'ImportPlan'>['route'];
 
 export default function ImportPlanScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProps>();
-  const { groupId } = route.params ?? {};
+  const { groupId, isPersonal } = route.params ?? {};
   const { user } = useAuth();
   const importPlan = useImportPlan();
   const { data: availablePlans } = useAvailablePlans();
@@ -117,13 +117,11 @@ export default function ImportPlanScreen() {
     if (!preview) return;
 
     try {
-      await importPlan.mutateAsync({ name: planName.trim(), readings: preview });
+      const plan = await importPlan.mutateAsync({ name: planName.trim(), readings: preview });
       if (groupId) {
-        navigation.navigate('GroupDetails', { groupId });
+        navigation.navigate('PlanDetails', { groupId });
       } else {
-        Alert.alert('Plan imported!', `"${planName}" is ready to use when creating a group.`, [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        navigation.navigate('CreateGroup', { isPersonal, preselectedPlanId: plan.id });
       }
     } catch (error: any) {
       if (error.code === '23505') {

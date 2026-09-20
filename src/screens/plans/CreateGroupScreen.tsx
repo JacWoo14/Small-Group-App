@@ -8,33 +8,37 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../context/ThemeContext';
 import { useAvailablePlans, useCreateGroup } from '../../hooks/useGroups';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
-import { DatePicker } from '../../components/DatePicker';
 import { Colors, Typography, Spacing } from '../../constants/theme';
-import { GroupStackParamList, ReadingPlan } from '../../types';
+import { PlanStackParamList, ReadingPlan } from '../../types';
 import { format } from 'date-fns';
 
-type Nav = NativeStackNavigationProp<GroupStackParamList, 'CreateGroup'>;
+type Nav = NativeStackNavigationProp<PlanStackParamList, 'CreateGroup'>;
+type RouteProps = NativeStackScreenProps<PlanStackParamList, 'CreateGroup'>['route'];
 
 export default function CreateGroupScreen() {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<RouteProps>();
+  const { isPersonal = false, preselectedPlanId } = route.params ?? {};
   const { theme } = useTheme();
   const { data: plans, isLoading: plansLoading } = useAvailablePlans();
   const createGroup = useCreateGroup();
 
   const [name, setName] = useState('');
-  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState(new Date());
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(preselectedPlanId ?? null);
+  const [startDate] = useState(new Date());
   const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null);
 
+  const selectedPlan = (plans || []).find((p) => p.id === selectedPlanId) || null;
+
   async function handleCreate() {
-    if (!name.trim()) {
+    if (!isPersonal && !name.trim()) {
       Alert.alert('Error', 'Please enter a group name');
       return;
     }
@@ -45,9 +49,10 @@ export default function CreateGroupScreen() {
 
     try {
       const group = await createGroup.mutateAsync({
-        name: name.trim(),
+        name: isPersonal ? (selectedPlan?.name || 'My Reading') : name.trim(),
         readingPlanId: selectedPlanId,
         startDate: format(startDate, 'yyyy-MM-dd'),
+        isPersonal,
       });
       setCreatedInviteCode(group.invite_code);
     } catch (error: any) {
@@ -62,8 +67,28 @@ export default function CreateGroupScreen() {
     }
   }
 
-  // Show success screen with invite code
+  // Success screen
   if (createdInviteCode) {
+    // Personal plans don't surface an invite code up front — that's a
+    // deliberate action from Plan Details ("Invite others to this plan"),
+    // so a personal plan can't accidentally be shared before the owner
+    // chooses to.
+    if (isPersonal) {
+      return (
+        <View style={styles.successContainer}>
+          <Text style={styles.successTitle}>Plan Created!</Text>
+          <Text style={styles.successText}>
+            You're all set. You can invite others to this plan any time from its details screen.
+          </Text>
+          <Button
+            title="Done"
+            onPress={() => navigation.navigate('PlanList')}
+            style={styles.doneButton}
+          />
+        </View>
+      );
+    }
+
     return (
       <View style={styles.successContainer}>
         <Text style={styles.successTitle}>Group Created!</Text>
@@ -76,7 +101,7 @@ export default function CreateGroupScreen() {
         </TouchableOpacity>
         <Button
           title="Done"
-          onPress={() => navigation.navigate('GroupList')}
+          onPress={() => navigation.navigate('PlanList')}
           style={styles.doneButton}
         />
       </View>
@@ -86,16 +111,22 @@ export default function CreateGroupScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
-        <Input
-          label="Group Name"
-          placeholder="e.g., Sunday Bible Study"
-          value={name}
-          onChangeText={setName}
-        />
+        {!isPersonal && (
+          <Input
+            label="Group Name"
+            placeholder="e.g., Sunday Bible Study"
+            value={name}
+            onChangeText={setName}
+          />
+        )}
 
         <Text style={styles.sectionLabel}>Reading Plan</Text>
         {plansLoading ? (
           <Text style={styles.loadingText}>Loading plans...</Text>
+        ) : (plans || []).length === 0 ? (
+          <Text style={styles.loadingText}>
+            No default plans are available yet — try "My Own Plan" instead.
+          </Text>
         ) : (
           (plans || []).map((plan: ReadingPlan) => (
             <TouchableOpacity
@@ -123,7 +154,7 @@ export default function CreateGroupScreen() {
         )}
 
         <TouchableOpacity
-          onPress={() => navigation.navigate('ImportPlan', {})}
+          onPress={() => navigation.navigate('ImportPlan', { isPersonal })}
           style={styles.importLink}
         >
           <Text style={[styles.importLinkText, { color: theme.primary }]}>+ Import a custom plan</Text>
@@ -133,7 +164,7 @@ export default function CreateGroupScreen() {
             Date-first plans have dates baked into plan_readings already. */}
 
         <Button
-          title="Create Group"
+          title={isPersonal ? 'Start Plan' : 'Create Group'}
           onPress={handleCreate}
           loading={createGroup.isPending}
         />

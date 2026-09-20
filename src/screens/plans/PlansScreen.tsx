@@ -15,12 +15,12 @@ import { useUserGroups } from '../../hooks/useGroups';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Colors, Typography, Spacing } from '../../constants/theme';
-import { Group, GroupStackParamList } from '../../types';
+import { Group, PlanStackParamList } from '../../types';
 import { format } from 'date-fns';
 
-type Nav = NativeStackNavigationProp<GroupStackParamList, 'GroupList'>;
+type Nav = NativeStackNavigationProp<PlanStackParamList, 'PlanList'>;
 
-export default function GroupsScreen() {
+export default function PlansScreen() {
   const navigation = useNavigation<Nav>();
   const { theme } = useTheme();
   const { data: groups, isLoading, error, refetch } = useUserGroups();
@@ -47,11 +47,11 @@ export default function GroupsScreen() {
       <View style={styles.buttonRow}>
         <TouchableOpacity
           style={[styles.actionButton, { backgroundColor: theme.primary }]}
-          onPress={() => navigation.navigate('CreateGroup')}
+          onPress={() => navigation.navigate('NewPlan')}
           activeOpacity={0.8}
         >
           <MaterialCommunityIcons name="plus" size={18} color={Colors.white} />
-          <Text style={styles.actionButtonTextPrimary}>Create Group</Text>
+          <Text style={styles.actionButtonTextPrimary}>New Plan</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.actionButtonOutline, { borderColor: theme.primary }]}
@@ -66,20 +66,20 @@ export default function GroupsScreen() {
       {(!groups || groups.length === 0) ? (
         <View style={styles.emptyContainer}>
           <MaterialCommunityIcons
-            name="account-group"
+            name="book-multiple-outline"
             size={80}
             color={Colors.lightGray}
           />
-          <Text style={styles.emptyTitle}>No groups yet</Text>
+          <Text style={styles.emptyTitle}>No plans yet</Text>
           <Text style={styles.emptyText}>
-            Create a group and invite friends, or join one with an invite code.
+            Start a new plan for yourself or a group, or join one with an invite code.
           </Text>
         </View>
       ) : (
         <FlatList
           data={groups}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <GroupCard group={item} navigation={navigation} />}
+          renderItem={({ item }) => <PlanCard group={item} navigation={navigation} />}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
         />
@@ -88,16 +88,29 @@ export default function GroupsScreen() {
   );
 }
 
-function GroupCard({ group, navigation }: { group: Group; navigation: Nav }) {
+function PlanCard({ group, navigation }: { group: Group; navigation: Nav }) {
+  // getUserGroups doesn't fetch the members list (avoids N+1 for a list
+  // screen), so this reflects is_personal as set at creation time. A
+  // personal plan that's since been shared still upgrades correctly on
+  // its Plan Details screen, which does fetch members.
+  const tagLabel = group.is_personal ? 'Personal' : 'Group';
+
   return (
     <TouchableOpacity
-      onPress={() => navigation.navigate('GroupDetails', { groupId: group.id })}
+      onPress={() => navigation.navigate('PlanDetails', { groupId: group.id })}
       activeOpacity={0.7}
     >
       <Card style={styles.card}>
         <View style={styles.cardRow}>
           <View style={styles.cardContent}>
-            <Text style={styles.groupName}>{group.name}</Text>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.groupName}>{group.name}</Text>
+              <View style={[styles.tag, group.is_personal ? styles.tagPersonal : styles.tagGroup]}>
+                <Text style={[styles.tagText, group.is_personal ? styles.tagTextPersonal : styles.tagTextGroup]}>
+                  {tagLabel}
+                </Text>
+              </View>
+            </View>
             {group.reading_plan && (
               <Text style={styles.planName}>{group.reading_plan.name}</Text>
             )}
@@ -173,10 +186,36 @@ const styles = StyleSheet.create({
   cardContent: {
     flex: 1,
   },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.xs,
+  },
   groupName: {
     ...Typography.h4,
     color: Colors.text,
-    marginBottom: Spacing.xs,
+  },
+  tag: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  tagPersonal: {
+    backgroundColor: '#EEF1F8',
+  },
+  tagGroup: {
+    backgroundColor: '#F5F5F5',
+  },
+  tagText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  tagTextPersonal: {
+    color: '#1E3A6E',
+  },
+  tagTextGroup: {
+    color: Colors.textSecondary,
   },
   planName: {
     ...Typography.body,

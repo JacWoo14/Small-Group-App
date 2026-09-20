@@ -13,9 +13,9 @@ import { useJoinGroup } from '../../hooks/useGroups';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Colors, Typography, Spacing } from '../../constants/theme';
-import { GroupStackParamList } from '../../types';
+import { PlanStackParamList } from '../../types';
 
-type Nav = NativeStackNavigationProp<GroupStackParamList, 'JoinGroup'>;
+type Nav = NativeStackNavigationProp<PlanStackParamList, 'JoinGroup'>;
 
 export default function JoinGroupScreen() {
   const navigation = useNavigation<Nav>();
@@ -34,7 +34,7 @@ export default function JoinGroupScreen() {
       Alert.alert('Success!', `You joined "${group.name}"!`, [
         {
           text: 'View Group',
-          onPress: () => navigation.navigate('GroupDetails', { groupId: group.id }),
+          onPress: () => navigation.navigate('PlanDetails', { groupId: group.id }),
         },
       ]);
     } catch (error: any) {

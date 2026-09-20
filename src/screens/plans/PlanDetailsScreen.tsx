@@ -19,13 +19,13 @@ import { useTheme } from '../../context/ThemeContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Colors, Typography, Spacing } from '../../constants/theme';
-import { GroupStackParamList, GroupMemberDetails, ReadingPlan } from '../../types';
+import { PlanStackParamList, GroupMemberDetails, ReadingPlan } from '../../types';
 import { format } from 'date-fns';
 
-type RouteProps = NativeStackScreenProps<GroupStackParamList, 'GroupDetails'>['route'];
-type Nav = NativeStackNavigationProp<GroupStackParamList, 'GroupDetails'>;
+type RouteProps = NativeStackScreenProps<PlanStackParamList, 'PlanDetails'>['route'];
+type Nav = NativeStackNavigationProp<PlanStackParamList, 'PlanDetails'>;
 
-export default function GroupDetailsScreen() {
+export default function PlanDetailsScreen() {
   const route = useRoute<RouteProps>();
   const navigation = useNavigation<Nav>();
   const { user } = useAuth();
@@ -39,6 +39,7 @@ export default function GroupDetailsScreen() {
   const { data: availablePlans } = useAvailablePlans();
   const [isChangingPlan, setIsChangingPlan] = useState(false);
   const [isTransferringOwnership, setIsTransferringOwnership] = useState(false);
+  const [inviteRevealed, setInviteRevealed] = useState(false);
 
   async function handleCopyCode() {
     if (group?.invite_code) {
@@ -48,6 +49,29 @@ export default function GroupDetailsScreen() {
   }
 
   function handleLeave() {
+    if (!isEffectivelyGroup) {
+      Alert.alert(
+        'Remove Plan',
+        `Remove "${group?.name}" from your plans? This can't be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await leaveGroup.mutateAsync(groupId);
+                navigation.navigate('PlanList');
+              } catch (error: any) {
+                Alert.alert('Error', error.message || 'Failed to remove plan');
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     const creatorWarning = isCreator
       ? '\n\nYou are the group creator. If you leave without transferring ownership, no one will be able to change the reading plan.'
       : '';
@@ -62,7 +86,7 @@ export default function GroupDetailsScreen() {
           onPress: async () => {
             try {
               await leaveGroup.mutateAsync(groupId);
-              navigation.navigate('GroupList');
+              navigation.navigate('PlanList');
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to leave group');
             }
@@ -100,6 +124,10 @@ export default function GroupDetailsScreen() {
   const members = group.members || [];
   const completedCount = members.filter((m) => m.completed_today).length;
   const isCreator = group.created_by === user?.id;
+  // A personal plan presents as a group as soon as someone else has
+  // actually joined, or the owner has deliberately revealed the invite
+  // code — group.is_personal alone never hides real shared state.
+  const isEffectivelyGroup = !group.is_personal || members.length > 1 || inviteRevealed;
 
   async function handleChangePlan(plan: ReadingPlan) {
     try {
@@ -160,61 +188,72 @@ export default function GroupDetailsScreen() {
             {format(new Date(group.start_date + 'T00:00:00'), 'MMMM d, yyyy')}
           </Text>
         </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Invite Code</Text>
-          <TouchableOpacity onPress={handleCopyCode} style={styles.codeRow}>
-            <Text style={[styles.codeValue, { color: theme.primary }]}>{group.invite_code}</Text>
-            <MaterialCommunityIcons
-              name="content-copy"
-              size={16}
-              color={theme.primary}
-              style={styles.copyIcon}
-            />
+        {isEffectivelyGroup ? (
+          <View style={styles.row}>
+            <Text style={styles.label}>Invite Code</Text>
+            <TouchableOpacity onPress={handleCopyCode} style={styles.codeRow}>
+              <Text style={[styles.codeValue, { color: theme.primary }]}>{group.invite_code}</Text>
+              <MaterialCommunityIcons
+                name="content-copy"
+                size={16}
+                color={theme.primary}
+                style={styles.copyIcon}
+              />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity onPress={() => setInviteRevealed(true)} style={styles.inviteReveal}>
+            <MaterialCommunityIcons name="account-plus-outline" size={16} color={theme.primary} />
+            <Text style={[styles.inviteRevealText, { color: theme.primary }]}>
+              Invite others to this plan
+            </Text>
           </TouchableOpacity>
-        </View>
+        )}
       </Card>
 
       {/* Members */}
-      <Card style={styles.card}>
-        <Text style={styles.cardTitle}>
-          Members ({completedCount}/{members.length} completed today)
-        </Text>
-        {members.map((member: GroupMemberDetails) => (
-          <View key={member.user_id} style={styles.memberRow}>
-            <View style={styles.memberNameRow}>
-              <MaterialCommunityIcons
-                name="account-circle-outline"
-                size={20}
-                color={Colors.stoneGray}
-                style={styles.memberIcon}
-              />
-              <Text style={styles.memberName}>
-                {member.display_name}
-                {member.user_id === user?.id ? ' (you)' : ''}
-              </Text>
-            </View>
-            <View style={[
-              styles.memberBadge,
-              member.completed_today ? styles.completedBadge : styles.pendingBadge,
-            ]}>
-              <MaterialCommunityIcons
-                name={member.completed_today ? 'check-circle' : 'clock-outline'}
-                size={13}
-                color={member.completed_today ? Colors.success : Colors.textTertiary}
-              />
-              <Text style={[
-                styles.badgeText,
-                member.completed_today ? styles.completedBadgeText : styles.pendingBadgeText,
+      {isEffectivelyGroup && (
+        <Card style={styles.card}>
+          <Text style={styles.cardTitle}>
+            Members ({completedCount}/{members.length} completed today)
+          </Text>
+          {members.map((member: GroupMemberDetails) => (
+            <View key={member.user_id} style={styles.memberRow}>
+              <View style={styles.memberNameRow}>
+                <MaterialCommunityIcons
+                  name="account-circle-outline"
+                  size={20}
+                  color={Colors.stoneGray}
+                  style={styles.memberIcon}
+                />
+                <Text style={styles.memberName}>
+                  {member.display_name}
+                  {member.user_id === user?.id ? ' (you)' : ''}
+                </Text>
+              </View>
+              <View style={[
+                styles.memberBadge,
+                member.completed_today ? styles.completedBadge : styles.pendingBadge,
               ]}>
-                {member.completed_today ? 'Done' : 'Pending'}
-              </Text>
+                <MaterialCommunityIcons
+                  name={member.completed_today ? 'check-circle' : 'clock-outline'}
+                  size={13}
+                  color={member.completed_today ? Colors.success : Colors.textTertiary}
+                />
+                <Text style={[
+                  styles.badgeText,
+                  member.completed_today ? styles.completedBadgeText : styles.pendingBadgeText,
+                ]}>
+                  {member.completed_today ? 'Done' : 'Pending'}
+                </Text>
+              </View>
             </View>
-          </View>
-        ))}
-      </Card>
+          ))}
+        </Card>
+      )}
 
       {/* Transfer Ownership (creator only) */}
-      {isCreator && (
+      {isEffectivelyGroup && isCreator && (
         <Card style={styles.card}>
           <View style={styles.planHeader}>
             <Text style={styles.cardTitle}>Ownership</Text>
@@ -280,7 +319,7 @@ export default function GroupDetailsScreen() {
       {/* Leave Group */}
       <Card style={styles.card}>
         <Button
-          title="Leave Group"
+          title={isEffectivelyGroup ? 'Leave Group' : 'Remove Plan'}
           variant="outline"
           onPress={handleLeave}
           loading={leaveGroup.isPending}
@@ -341,6 +380,16 @@ const styles = StyleSheet.create({
   planOptionDays: {
     ...Typography.caption,
     color: Colors.textSecondary,
+  },
+  inviteReveal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingTop: Spacing.xs,
+  },
+  inviteRevealText: {
+    ...Typography.body,
+    fontWeight: '600',
   },
   label: {
     ...Typography.caption,

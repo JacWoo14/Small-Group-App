@@ -52,6 +52,7 @@ export async function getTodaysReadings(
       reading_plan_id: row.group_reading_plan_id,
       start_date: row.group_start_date,
       invite_code: row.group_invite_code,
+      is_personal: !!row.group_is_personal,
       created_by: row.group_created_by,
       created_at: row.group_created_at,
       updated_at: row.group_updated_at,

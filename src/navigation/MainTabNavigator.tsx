@@ -6,7 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 import TodayScreen from '../screens/TodayScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import GroupStackNavigator from './GroupStackNavigator';
+import PlanStackNavigator from './PlanStackNavigator';
 
 const Tab = createBottomTabNavigator();
 
@@ -44,13 +44,13 @@ export default function MainTabNavigator() {
         }}
       />
       <Tab.Screen
-        name="Groups"
-        component={GroupStackNavigator}
+        name="Plans"
+        component={PlanStackNavigator}
         options={{
-          title: 'Groups',
+          title: 'Plans',
           headerShown: false,
           tabBarIcon: ({ color, size }: IconProps) => (
-            <MaterialCommunityIcons name="account-group" size={size} color={color} />
+            <MaterialCommunityIcons name="book-multiple-outline" size={size} color={color} />
           ),
         }}
       />

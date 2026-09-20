@@ -15,6 +15,7 @@ import {
 } from '../services/groups';
 import { getTodaysReadings, markComplete } from '../services/completions';
 import { importReadingPlan, ParsedReading } from '../services/plans';
+import { getPlanTemplates, instantiateTemplate } from '../services/planTemplates';
 
 export function useUserGroups() {
   const { user } = useAuth();
@@ -62,11 +63,37 @@ export function useCreateGroup() {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: (params: { name: string; readingPlanId: string; startDate: string }) =>
-      createGroup(params.name, params.readingPlanId, params.startDate, user!.id),
+    mutationFn: (params: {
+      name: string;
+      readingPlanId: string;
+      startDate: string;
+      isPersonal?: boolean;
+    }) =>
+      createGroup(params.name, params.readingPlanId, params.startDate, user!.id, params.isPersonal),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['groups', user?.id] });
       queryClient.invalidateQueries({ queryKey: ['readings', user?.id] });
+    },
+  });
+}
+
+export function usePlanTemplates() {
+  return useQuery({
+    queryKey: ['planTemplates'],
+    queryFn: getPlanTemplates,
+    staleTime: 60 * 60 * 1000, // 1 hour — built-in catalog changes rarely
+  });
+}
+
+export function useInstantiateTemplate() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: (params: { templateId: string; startDate: string }) =>
+      instantiateTemplate(params.templateId, params.startDate, user!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['readingPlans', user?.id] });
     },
   });
 }

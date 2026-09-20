@@ -11,7 +11,8 @@ export async function createGroup(
   name: string,
   readingPlanId: string,
   startDate: string, // YYYY-MM-DD
-  userId: string
+  userId: string,
+  isPersonal: boolean = false
 ): Promise<Group> {
   const inviteCode = generateInviteCode();
 
@@ -26,6 +27,18 @@ export async function createGroup(
     });
 
   if (error) throw error;
+
+  // create_group_with_member's SQL source lives only in the Supabase
+  // dashboard, not this repo, so is_personal is set via a plain follow-up
+  // update (allowed by the "Group creators can update their groups" RLS
+  // policy) rather than by modifying that RPC blind.
+  if (isPersonal) {
+    const { error: personalError } = await supabase
+      .from('groups')
+      .update({ is_personal: true })
+      .eq('id', groupId);
+    if (personalError) throw personalError;
+  }
 
   // Fetch full group details (user is now a member, RLS allows it)
   const group = await getGroupDetails(groupId);

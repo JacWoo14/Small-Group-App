@@ -46,6 +46,26 @@ export interface PlanReading {
 export type Passage = string;
 
 // ==========================================
+// PLAN TEMPLATES (built-in default plan catalog)
+// ==========================================
+
+export interface PlanTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  total_days: number;
+  created_at: string;
+}
+
+export interface PlanTemplateReading {
+  id: string;
+  template_id: string;
+  day_number: number;
+  passages: string[];
+}
+
+// ==========================================
 // GROUPS & ACCOUNTABILITY
 // ==========================================
 
@@ -55,6 +75,7 @@ export interface Group {
   reading_plan_id: string;
   start_date: string; // YYYY-MM-DD format (e.g., "2026-02-14")
   invite_code: string; // 6-character code
+  is_personal: boolean; // set at creation; see instantiateTemplate/createGroup
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -217,15 +238,17 @@ export type RootStackParamList = {
 
 export type MainTabParamList = {
   Today: undefined;
-  Groups: undefined;
+  Plans: undefined;
   Progress: undefined;
   Settings: undefined;
 };
 
-export type GroupStackParamList = {
-  GroupList: undefined;
-  GroupDetails: { groupId: string };
-  CreateGroup: undefined;
+export type PlanStackParamList = {
+  PlanList: undefined;
+  PlanDetails: { groupId: string };
+  NewPlan: undefined;
+  ChoosePlanSource: { isPersonal: boolean };
+  CreateGroup: { isPersonal?: boolean; preselectedPlanId?: string } | undefined;
   JoinGroup: undefined;
-  ImportPlan: { groupId?: string };
+  ImportPlan: { groupId?: string; isPersonal?: boolean };
 };
