@@ -6,6 +6,7 @@ import { PlanStackParamList } from '../types';
 import PlansScreen from '../screens/plans/PlansScreen';
 import NewPlanScreen from '../screens/plans/NewPlanScreen';
 import ChoosePlanSourceScreen from '../screens/plans/ChoosePlanSourceScreen';
+import TemplatePickerScreen from '../screens/plans/TemplatePickerScreen';
 import CreateGroupScreen from '../screens/plans/CreateGroupScreen';
 import JoinGroupScreen from '../screens/plans/JoinGroupScreen';
 import PlanDetailsScreen from '../screens/plans/PlanDetailsScreen';
@@ -43,6 +44,11 @@ export default function PlanStackNavigator() {
         name="ChoosePlanSource"
         component={ChoosePlanSourceScreen}
         options={{ title: 'New Plan' }}
+      />
+      <Stack.Screen
+        name="TemplatePicker"
+        component={TemplatePickerScreen}
+        options={{ title: 'Choose a Plan' }}
       />
       <Stack.Screen
         name="CreateGroup"

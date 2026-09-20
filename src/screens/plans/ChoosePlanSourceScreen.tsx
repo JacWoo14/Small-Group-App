@@ -22,7 +22,7 @@ export default function ChoosePlanSourceScreen() {
 
       <TouchableOpacity
         style={[styles.option, { borderColor: theme.primary }]}
-        onPress={() => navigation.navigate('CreateGroup', { isPersonal })}
+        onPress={() => navigation.navigate('TemplatePicker', { isPersonal })}
         activeOpacity={0.7}
       >
         <MaterialCommunityIcons name="book-open-variant" size={32} color={theme.primary} />

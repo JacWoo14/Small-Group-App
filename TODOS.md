@@ -83,18 +83,20 @@ Agreed after a planning session covering default reading plans, individual (non-
 **Effort:** S
 **Depends on:** New Plan decision-tree flow
 
-### Phase 3 — Default plan content & browsing
+### Phase 3 — Default plan content & browsing — ✅ Done (2026-09-19)
 
 #### Curate initial template catalog
-**What:** A small starting set of built-in plans.
-**Why:** Stick to public-domain/classic plan structures for v1 (M'Cheyne, a standard chronological ordering, a Gospels-in-30-days, a Psalms/Proverbs plan) — passage-and-day lists are factual/functional, but avoid lifting a named plan's exact schedule wholesale from a specific modern publisher/app without checking.
+**What:** 5 built-in plans seeded: Gospel of John (21 days), Proverbs in a Month (31), Psalms: The First 30, Genesis in 50 Days, and a 7-Day Introduction to Jesus sampler.
+**Why:** Kept to single-book sequential-chapter plans (chapter counts are simple, verifiable facts) plus one hand-picked sampler of universally well-known passages, rather than reproducing a full day-by-day table for a specific named historical plan (e.g. M'Cheyne's) from memory — that risked shipping inaccurate content under a real name. A properly-sourced named plan can be added later.
 **Effort:** S-M (mostly content work, not engineering)
 **Depends on:** `plan_templates` tables
 
 #### Template picker UI
-**What:** Replaces the flat list currently in `CreateGroupScreen` for the Default leaf — browse/preview before selecting, showing first few days, total length, and category.
+**What:** `TemplatePickerScreen` replaces the flat list in `CreateGroupScreen` for the Default leaf — browse templates, pick a start date, continue into the existing name/create flow via `preselectedPlanId`.
 **Effort:** M
 **Depends on:** Curated template catalog, New Plan decision-tree flow
+
+**Verified live end-to-end** on the emulator: browsed all 5 templates, instantiated three of them into real dated plans (confirmed via the duplicate-name guard correctly firing on repeat attempts), completed group creation, and confirmed the Today screen shows the correct day-1 reading ("Psalm 1") dated to the chosen start date.
 
 ### Explicitly out of scope for this epic
 Custom-creation overhaul and outside-plan import — the `plan_templates` table this epic builds is the intended foundation for both later (custom creation becomes "build your own template"; outside-plan import becomes "parse an external source into the same template shape").
