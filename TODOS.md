@@ -6,12 +6,17 @@ Work items deferred from plan reviews. Use this as the source of truth for upcom
 
 ## P0 — Run immediately after merge
 
-### Run IDOR-fix migrations against production Supabase
-**What:** Run `supabase/migrations/20260616_get_all_todays_readings_add_date_param.sql` and `supabase/migrations/20260718_fix_get_all_todays_readings_idor.sql` against the live database via the Supabase SQL Editor (this repo applies migrations manually, no automated runner).
-**Why:** Surfaced by /ship adversarial review (2026-08-10). Until these run, `get_all_todays_readings` (SECURITY DEFINER) trusts the caller-supplied `user_uuid` with no check that it matches the authenticated caller — any authenticated user could pass another user's UUID and read their group names, invite codes, reading plans, and completion status. "Merged to main" does not mean "deployed" for this repo's manual-migration workflow.
-**How:** Supabase Dashboard → SQL Editor → run both files in order. Verify with a quick probe: authenticate as user A, call the RPC with user B's UUID, confirm zero rows returned.
-**Effort:** XS (a few minutes)
-**Depends on:** Nothing — do this first, before anything else in this release
+### ~~Run IDOR-fix migrations against production Supabase~~ — ✅ Done (2026-09-20)
+Confirmed via `pg_get_functiondef` on `get_all_todays_readings` in the SQL Editor: both the `p_date` parameter (from `20260616_get_all_todays_readings_add_date_param.sql`) and the `(user_uuid = auth.uid() OR auth.role() = 'service_role')` check (from `20260718_fix_get_all_todays_readings_idor.sql`) are present in the deployed function. The caller-supplied-UUID IDOR is fixed in production.
+
+### ~~Run stale-seed-plan-removal migration against production Supabase~~ — ✅ Done (2026-09-20)
+Ran `supabase/migrations/20260919_remove_stale_seed_reading_plans.sql` successfully. Deleted the 4 leftover pre-migration seed plans ("30-Day Psalms", "7-Day Gospels Sampler", "90-Day New Testament", "One Year Bible" — broken `scheduled_date: null` data superseded by `plan_templates`) plus the one group that referenced one of them, confirmed by the app owner to be their own test group, not a real user.
+
+### ~~Run plan_templates dedupe migration against production Supabase~~ — ✅ Done (2026-09-20)
+Ran `supabase/migrations/20260920_dedupe_plan_templates.sql` successfully. Removed the duplicate rows caused by re-running `20260920_seed_plan_templates_catalog.sql` more than once while iterating on catalog content, and added a `UNIQUE` constraint on `plan_templates.name` so a re-run can't silently duplicate again.
+
+### ~~Run placeholder plan_templates removal migration against production Supabase~~ — ✅ Done (2026-10-04)
+Ran `supabase/migrations/20261004_remove_placeholder_plan_templates.sql` successfully. Removed the 5 leftover placeholder/test rows ("7-Day Introduction to Jesus", "Genesis in 50 Days", "Gospel of John", "Proverbs in a Month", "Psalms: The First 30") that predated the Phase 3 real-content seeding. `plan_templates` now holds exactly the 8 intended catalog plans — confirmed complete (no partial inserts) via a `reading_rows` vs `total_days` audit before this ran.
 
 ---
 
@@ -35,7 +40,7 @@ Work items deferred from plan reviews. Use this as the source of truth for upcom
 
 ---
 
-## Plans Tab + Default Reading Plan Templates (agreed 2026-09-19)
+## Plans Tab + Default Reading Plan Templates (agreed 2026-09-19) — ✅ Done (2026-09-20)
 
 Agreed after a planning session covering default reading plans, individual (non-group) use, and a Plans-tab IA rework. Phases are ordered by dependency.
 
@@ -83,16 +88,31 @@ Agreed after a planning session covering default reading plans, individual (non-
 **Effort:** S
 **Depends on:** New Plan decision-tree flow
 
-### Phase 3 — Default plan content & browsing
+### Phase 3 — Default plan content & browsing — ✅ Done (2026-09-20)
 
-#### Curate initial template catalog
-**What:** A small starting set of built-in plans.
-**Why:** Stick to public-domain/classic plan structures for v1 (M'Cheyne, a standard chronological ordering, a Gospels-in-30-days, a Psalms/Proverbs plan) — passage-and-day lists are factual/functional, but avoid lifting a named plan's exact schedule wholesale from a specific modern publisher/app without checking.
+#### Remove stale seed reading plans — ✅ Done (2026-09-20)
+Deleted the 4 leftover pre-migration `is_public=true` seed plans from `reading_plans`/`plan_readings` (`supabase/migrations/20260919_remove_stale_seed_reading_plans.sql`), plus the one test group that referenced one of them. They predated the date-first model (`scheduled_date` always null) and old-format `passages`, so any group on one had a permanently empty Today screen. Superseded by the template catalog below.
+
+#### Curate initial template catalog — ✅ Done (2026-09-20)
+**What:** `supabase/migrations/20260920_seed_plan_templates_catalog.sql` seeds 8 real, named, sourced plans (the original 4 computed/generic ones were replaced outright, not layered, since that draft never ran in prod):
+- **M'Cheyne Reading Plan** (365d) — 4 daily readings, OT once + NT/Psalms twice
+- **Chronological Bible in a Year** (365d) — scripture in historical order
+- **Navigators Bible Reading Plan** (300d) — formerly Discipleship Journal's, 4 tracks, 5-day/week with catch-up days
+- **Two Year Chronological** (730d) — OT weekdays / NT weekends
+- **A Chapter a Day: Bible in 3 Years** (1095d) — Celebration Church, stitched from 12 quarterly sub-plans
+- **Whole Bible in Under 2 Years** (683d) — Life.Church, OT chronological + daily NT passage, weekly reflection day
+- **The One Year Bible** (365d) — Tyndale House's classic branded plan, daily 4-way OT/NT/Psalms/Proverbs interleave
+- **The Bible Recap** (365d) — Tara-Leigh Cobble's chronological plan tied to her podcast/book
+
+**Why:** User feedback (2026-09-20): the original computed plans "were sort of already there in some flavor" (echoing the deleted stale seed data) and lacked real recognition. Re-sourced via background research agents and direct browser-driven fetches of live YouVersion/publisher schedules (citations only, no copied commentary) rather than reconstructing from memory — cross-checked against a second independent source where possible. Two research dead-ends handled without fabricating: Tim LaHaye's 3-year plan had no real day-by-day chart in its only free source (just pace descriptions + a blank journal template), so Celebration Church's plan was used instead; a background research agent got stuck making no progress on the Celebration Church fetch (9+ silent "still waiting" cycles with no file ever written) and was killed, then re-done directly via browser `fetch()` calls, which is also how the 3 later additions (Life.Church, Tyndale, Bible Recap) were fetched — faster and more controllable than delegating to another agent. Also decided: **the template catalog is scoped to long-term/complex plans only** — short, single-book, or simple plans stay in scope for custom plan creation (a separate, out-of-scope-for-this-epic feature), not the curated catalog.
+**How:** Run the migration file via the Supabase SQL Editor. Sanity-check afterward: `SELECT name, total_days, (SELECT COUNT(*) FROM plan_template_readings WHERE template_id = plan_templates.id) AS reading_rows FROM plan_templates;` — `reading_rows` should equal `total_days` for all 8 (365/365/300/730/1095/683/365/365).
 **Effort:** S-M (mostly content work, not engineering)
 **Depends on:** `plan_templates` tables
 
-#### Template picker UI
-**What:** Replaces the flat list currently in `CreateGroupScreen` for the Default leaf — browse/preview before selecting, showing first few days, total length, and category.
+#### Template picker UI — ✅ Done (2026-09-20)
+**What:** New `TemplatePickerScreen` (`src/screens/plans/TemplatePickerScreen.tsx`), inserted into the New Plan flow between `ChoosePlanSource`'s "A Default Plan" option and `CreateGroupScreen`. Lists all 8 catalog templates (shortest to longest), each with a category badge; tapping a card expands it to preview the first 3 days via a new `getTemplatePreview` service fn / `useTemplatePreview` hook; "Start This Plan" calls `instantiateTemplate` and hands off to `CreateGroupScreen` with `preselectedPlanId` set, reusing the same pattern `ImportPlanScreen` already used for custom plans.
+**Why it wasn't just editing `CreateGroupScreen`'s existing list in place:** that screen's list is fed by `useAvailablePlans` (`reading_plans.is_public OR created_by=user`), which is the right data source for the final "confirm and name" step but not for template browsing — mirroring `ImportPlanScreen`'s existing "separate browse/prepare screen → land in CreateGroupScreen with a preselected plan" pattern kept both flows (custom paste, default catalog) architecturally consistent instead of overloading one screen with two data sources.
+**Verified:** `npx tsc --noEmit` clean; confirmed rendering with real data in the Android Studio emulator (2026-09-20).
 **Effort:** M
 **Depends on:** Curated template catalog, New Plan decision-tree flow
 
