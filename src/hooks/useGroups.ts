@@ -15,7 +15,7 @@ import {
 } from '../services/groups';
 import { getTodaysReadings, markComplete } from '../services/completions';
 import { importReadingPlan, ParsedReading } from '../services/plans';
-import { getPlanTemplates, instantiateTemplate } from '../services/planTemplates';
+import { getPlanTemplates, getTemplatePreview, instantiateTemplate } from '../services/planTemplates';
 
 export function useUserGroups() {
   const { user } = useAuth();
@@ -81,6 +81,15 @@ export function usePlanTemplates() {
   return useQuery({
     queryKey: ['planTemplates'],
     queryFn: getPlanTemplates,
+    staleTime: 60 * 60 * 1000, // 1 hour — built-in catalog changes rarely
+  });
+}
+
+export function useTemplatePreview(templateId: string | null) {
+  return useQuery({
+    queryKey: ['planTemplatePreview', templateId],
+    queryFn: () => getTemplatePreview(templateId!),
+    enabled: !!templateId,
     staleTime: 60 * 60 * 1000, // 1 hour — built-in catalog changes rarely
   });
 }
