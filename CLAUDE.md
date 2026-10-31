@@ -57,7 +57,7 @@ Supabase (PostgreSQL)
 | `src/services/completions.ts` | `markComplete`, `getTodaysReadings` (via `get_all_todays_readings` RPC), `getGroupCompletionsForDate` |
 | `src/services/stats.ts` | `getUserStreak`, `getYesterdayGroupRecap`, `calculateStreakFromDates` (exported pure fn) |
 | `src/services/plans.ts` | `parsePlanText`, `parseDatelessPlanText`, `detectPlanFormat`, `importReadingPlan` |
-| `src/services/notifications.ts` | `registerForPushNotifications`, `dismissTodayNotification`, `getNotificationPermissionStatus` |
+| `src/services/notifications.ts` | `scheduleDailyReminder` / `cancelDailyReminder` (on-device daily reminder — the live path, no server), `dismissTodayNotification`, `getNotificationPermissionStatus`; `registerForPushNotifications` is dormant (no callers) |
 | `src/hooks/useGroups.ts` | React Query hooks for all group + plan operations; `useMarkComplete` calls `dismissTodayNotification` in onSuccess |
 | `src/hooks/useProgress.ts` | `useUserStreak`, `useYesterdayRecap` |
 | `src/context/AuthContext.tsx` | `useAuth()` — session, user, profile, deep link handler; `handleProfileLoaded()` DRYs session/auth-state-change; registers push token on login |
@@ -65,7 +65,7 @@ Supabase (PostgreSQL)
 | `src/constants/theme.ts` | Colors, Typography, Spacing, `THEMES`/`ThemeId`/`resolveThemeId` (theme presets) — single source of truth for styling |
 | `src/utils/dateNav.ts` | `clampDate` — shared date-boundary clamping for TodayScreen's nav arrows and swipe gesture |
 | `src/types/index.ts` | All TypeScript interfaces |
-| `supabase/functions/send-daily-reminders/index.ts` | Edge Function for daily push notifications; scheduled `*/15 * * * *`; sends per-group passage + "Yesterday: N/M" |
+| `supabase/functions/send-daily-reminders/index.ts` | **Dormant** server push (reminders now fire on-device). Only sends to users with a `push_token`, which nothing writes anymore. Must be deployed with `--no-verify-jwt`. Revive only for group-aware notifications ("Yesterday: N/M", nudges) |
 
 ## Data Models
 
@@ -111,7 +111,7 @@ User picks a start date in the UI; sequential dates are assigned from that point
 
 ## What's Not Built Yet
 - App Store / Play Store submission
-- Notification time picker should be restricted to hour-only options (cron fires every 15 min; picker currently allows any minute)
+- Smarter on-device reminders: skip/cancel today's reminder once the reading is marked complete, and put the real passage in the notification body (schedule the next ~14 days from plan data, refreshed on app open)
 
 ## Skill routing
 

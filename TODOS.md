@@ -22,6 +22,14 @@ Ran `supabase/migrations/20261004_remove_placeholder_plan_templates.sql` success
 
 ## P1 — Must ship before real users onboard
 
+### Verify on-device daily reminders on a physical phone (2026-10-30)
+**What:** Daily reminders now fire locally via `scheduleDailyReminder` (`src/services/notifications.ts`): scheduled on app load, sign-in, onboarding, and whenever the time is changed in Settings; cancelled on sign-out. Needs a new EAS preview build to confirm on a real phone (set the time ~2 minutes ahead in Settings and wait).
+**Why:** Server push never worked end to end. The cron's requests were rejected by the gateway's JWT check (401 `UNAUTHORIZED_INVALID_JWT_FORMAT`, fixed by turning off Verify JWT), and `users.push_token` was never populated (`has_token = false`). Local scheduling drops FCM credentials, the push token, the cron job, the edge function and the 15-minute window from the chain.
+**Known limits:** static text ("Today's reading"), fires even if the reading is already done, no "Yesterday: N/M". Follow-ups are in CLAUDE.md "What's Not Built Yet".
+**Cleanup (optional):** the `send-daily-reminders` cron (job 5) still runs every 15 min but now sends nothing. Stop it with `SELECT cron.unschedule(5);`. If server push is ever revived, rotate `CRON_SECRET` first (it was pasted in a chat transcript) and redeploy with `--no-verify-jwt`.
+**Effort:** XS (verification only)
+**Depends on:** New EAS build
+
 ---
 
 ## P2 — Important before public launch

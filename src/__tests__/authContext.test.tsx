@@ -1,6 +1,6 @@
 /**
  * Unit tests for src/context/AuthContext.tsx's handleProfileLoaded gating
- * logic — specifically, that push-notification registration only fires on
+ * logic — specifically, that daily-reminder scheduling only fires on
  * initial app load and the 'SIGNED_IN' auth event, not on every auth-state
  * change (e.g. TOKEN_REFRESHED). This is a flagged regression risk: the
  * gating depends on an exact string match against Supabase SDK event names
@@ -33,9 +33,11 @@ jest.mock('../services/auth', () => ({
   ensureUserProfile: (...args: any[]) => mockEnsureUserProfile(...args),
 }));
 
-const mockRegisterForPushNotifications = jest.fn();
+const mockScheduleDailyReminder = jest.fn();
+const mockCancelDailyReminder = jest.fn();
 jest.mock('../services/notifications', () => ({
-  registerForPushNotifications: (...args: any[]) => mockRegisterForPushNotifications(...args),
+  scheduleDailyReminder: (...args: any[]) => mockScheduleDailyReminder(...args),
+  cancelDailyReminder: (...args: any[]) => mockCancelDailyReminder(...args),
 }));
 
 jest.mock('expo-linking', () => ({
@@ -67,11 +69,12 @@ function wrapper({ children }: { children: React.ReactNode }) {
 beforeEach(() => {
   jest.clearAllMocks();
   authStateChangeCallback = null;
-  mockRegisterForPushNotifications.mockResolvedValue(undefined);
+  mockScheduleDailyReminder.mockResolvedValue(true);
+  mockCancelDailyReminder.mockResolvedValue(undefined);
 });
 
-describe('AuthProvider push-registration gating', () => {
-  it('registers for push notifications on initial session load', async () => {
+describe('AuthProvider daily-reminder gating', () => {
+  it('schedules the daily reminder on initial session load', async () => {
     mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     mockEnsureUserProfile.mockResolvedValue(PROFILE);
 
@@ -79,75 +82,77 @@ describe('AuthProvider push-registration gating', () => {
 
     await waitFor(() => expect(result.current.user).toEqual(PROFILE));
 
-    expect(mockRegisterForPushNotifications).toHaveBeenCalledWith('user-1');
+    expect(mockScheduleDailyReminder).toHaveBeenCalledWith('07:00:00');
   });
 
-  it("registers for push notifications on a 'SIGNED_IN' auth-state event", async () => {
+  it("schedules the daily reminder on a 'SIGNED_IN' auth-state event", async () => {
     mockGetSession.mockResolvedValue({ data: { session: null } });
     mockEnsureUserProfile.mockResolvedValue(PROFILE);
 
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
-    mockRegisterForPushNotifications.mockClear();
+    mockScheduleDailyReminder.mockClear();
 
     await act(async () => {
       authStateChangeCallback!('SIGNED_IN', { user: { id: 'user-1' } });
     });
     await waitFor(() => expect(result.current.user).toEqual(PROFILE));
 
-    expect(mockRegisterForPushNotifications).toHaveBeenCalledWith('user-1');
+    expect(mockScheduleDailyReminder).toHaveBeenCalledWith('07:00:00');
   });
 
-  it("does NOT register for push notifications on a 'TOKEN_REFRESHED' auth-state event (regression guard)", async () => {
+  it("does NOT reschedule the daily reminder on a 'TOKEN_REFRESHED' auth-state event (regression guard)", async () => {
     mockGetSession.mockResolvedValue({ data: { session: null } });
     mockEnsureUserProfile.mockResolvedValue(PROFILE);
 
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
-    mockRegisterForPushNotifications.mockClear();
+    mockScheduleDailyReminder.mockClear();
 
     await act(async () => {
       authStateChangeCallback!('TOKEN_REFRESHED', { user: { id: 'user-1' } });
     });
     await waitFor(() => expect(result.current.user).toEqual(PROFILE));
 
-    expect(mockRegisterForPushNotifications).not.toHaveBeenCalled();
+    expect(mockScheduleDailyReminder).not.toHaveBeenCalled();
   });
 
-  it('clears the user and does not register for push when the session ends (sign out)', async () => {
+  it('clears the user and cancels the daily reminder when the session ends (sign out)', async () => {
     mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     mockEnsureUserProfile.mockResolvedValue(PROFILE);
 
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.user).toEqual(PROFILE));
-    mockRegisterForPushNotifications.mockClear();
+    mockScheduleDailyReminder.mockClear();
+    mockCancelDailyReminder.mockClear();
 
     await act(async () => {
       authStateChangeCallback!('SIGNED_OUT', null);
     });
 
     expect(result.current.user).toBeNull();
-    expect(mockRegisterForPushNotifications).not.toHaveBeenCalled();
+    expect(mockScheduleDailyReminder).not.toHaveBeenCalled();
+    expect(mockCancelDailyReminder).toHaveBeenCalledTimes(1);
   });
 
-  it('reports push registration failures to Sentry instead of swallowing them (regression guard)', async () => {
+  it('reports reminder scheduling failures to Sentry instead of swallowing them (regression guard)', async () => {
     mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     mockEnsureUserProfile.mockResolvedValue(PROFILE);
-    const registrationError = new Error('getExpoPushTokenAsync failed');
-    mockRegisterForPushNotifications.mockRejectedValue(registrationError);
+    const scheduleError = new Error('scheduleNotificationAsync failed');
+    mockScheduleDailyReminder.mockRejectedValue(scheduleError);
 
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     await waitFor(() => expect(result.current.user).toEqual(PROFILE));
     await waitFor(() =>
       expect(mockCaptureException).toHaveBeenCalledWith(
-        registrationError,
-        expect.objectContaining({ tags: expect.objectContaining({ context: 'push_registration' }) })
+        scheduleError,
+        expect.objectContaining({ tags: expect.objectContaining({ context: 'daily_reminder_schedule' }) })
       )
     );
   });
 
-  it('sets needsOnboarding when no profile exists yet, without registering for push', async () => {
+  it('sets needsOnboarding when no profile exists yet, without scheduling a reminder', async () => {
     mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-new' } } } });
     mockEnsureUserProfile.mockResolvedValue(null);
 
@@ -156,6 +161,6 @@ describe('AuthProvider push-registration gating', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.needsOnboarding).toBe(true);
-    expect(mockRegisterForPushNotifications).not.toHaveBeenCalled();
+    expect(mockScheduleDailyReminder).not.toHaveBeenCalled();
   });
 });

@@ -6,10 +6,76 @@ import * as Sentry from '@sentry/react-native';
 import { supabase } from './supabase';
 
 const VIBRATION_PATTERN_MS: number[] = [0, 250, 250, 250];
+const ANDROID_CHANNEL_ID = 'default';
+const DAILY_REMINDER_ID = 'daily-reading-reminder';
+
+async function ensureAndroidChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+    name: 'Daily Reminders',
+    importance: Notifications.AndroidImportance.DEFAULT,
+    vibrationPattern: VIBRATION_PATTERN_MS,
+  });
+}
+
+/**
+ * Schedule (or reschedule) the on-device daily reading reminder at the user's
+ * preferred time ("HH:MM" or "HH:MM:SS", device-local). Runs entirely on the
+ * phone via the OS alarm system: no push token, FCM, or server involved, so it
+ * also works on emulators. Returns false if notification permission is not
+ * granted; throws if the time string is malformed.
+ */
+export async function scheduleDailyReminder(preferredTime: string): Promise<boolean> {
+  const [hour, minute] = preferredTime.split(':').map(Number);
+  if (
+    !Number.isInteger(hour) || !Number.isInteger(minute) ||
+    hour < 0 || hour > 23 || minute < 0 || minute > 59
+  ) {
+    throw new Error(`scheduleDailyReminder: invalid time "${preferredTime}"`);
+  }
+
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+  if (existingStatus !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== 'granted') {
+    return false;
+  }
+
+  await ensureAndroidChannel();
+
+  // Cancel first so a changed time replaces the old schedule instead of
+  // adding a second reminder.
+  await Notifications.cancelScheduledNotificationAsync(DAILY_REMINDER_ID);
+  await Notifications.scheduleNotificationAsync({
+    identifier: DAILY_REMINDER_ID,
+    content: {
+      title: "Today's reading",
+      body: 'Open the app to read and mark it complete.',
+      data: { type: 'daily_reminder' },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour,
+      minute,
+      channelId: ANDROID_CHANNEL_ID,
+    },
+  });
+  return true;
+}
+
+/** Remove the daily reminder (e.g. on sign out). No-op if none is scheduled. */
+export async function cancelDailyReminder(): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(DAILY_REMINDER_ID);
+}
 
 /**
  * Request notification permissions and save the Expo push token to the DB.
- * Safe to call on every login — silently skips if on a simulator or if the
+ * Dormant: nothing calls this since reminders moved on-device (see
+ * scheduleDailyReminder). Kept for if server-driven push is revived for
+ * group-aware notifications. Silently skips if on a simulator or if the
  * user has already denied permissions.
  */
 export async function registerForPushNotifications(userId: string): Promise<void> {
@@ -30,13 +96,7 @@ export async function registerForPushNotifications(userId: string): Promise<void
     return;
   }
 
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'Daily Reminders',
-      importance: Notifications.AndroidImportance.DEFAULT,
-      vibrationPattern: VIBRATION_PATTERN_MS,
-    });
-  }
+  await ensureAndroidChannel();
 
   const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
   if (!projectId) {
@@ -86,7 +146,6 @@ export async function dismissTodayNotification(groupId: string): Promise<void> {
  * Used by SettingsScreen to show current permission status.
  */
 export async function getNotificationPermissionStatus(): Promise<'granted' | 'denied' | 'undetermined'> {
-  if (!Device.isDevice) return 'undetermined';
   const { status } = await Notifications.getPermissionsAsync();
   return status;
 }

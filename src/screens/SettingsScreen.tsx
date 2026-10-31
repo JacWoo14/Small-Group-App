@@ -4,7 +4,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { updateNotificationTime, signOut } from '../services/auth';
-import { getNotificationPermissionStatus, registerForPushNotifications } from '../services/notifications';
+import { getNotificationPermissionStatus, scheduleDailyReminder } from '../services/notifications';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { TimePicker } from '../components/TimePicker';
@@ -26,7 +26,7 @@ export default function SettingsScreen() {
     if (!user) return;
     setLoading(true);
     try {
-      await registerForPushNotifications(user.id);
+      await scheduleDailyReminder(user.preferred_notification_time);
       const status = await getNotificationPermissionStatus();
       setPermissionStatus(status);
       if (status !== 'granted') {
@@ -35,8 +35,8 @@ export default function SettingsScreen() {
           'Please enable notifications in your device settings.'
         );
       }
-    } catch {
-      // Ignore — token save failures are non-critical
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to turn on reminders');
     } finally {
       setLoading(false);
     }
@@ -66,7 +66,16 @@ export default function SettingsScreen() {
         preferred_notification_time: timeString,
       });
 
-      Alert.alert('Success', 'Notification time updated!');
+      const scheduled = await scheduleDailyReminder(timeString);
+      setPermissionStatus(await getNotificationPermissionStatus());
+      if (scheduled) {
+        Alert.alert('Success', 'Notification time updated!');
+      } else {
+        Alert.alert(
+          'Time saved',
+          'Reminders are off because notifications are not allowed for this app. Enable them in your device settings.'
+        );
+      }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to update time');
     } finally {

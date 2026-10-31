@@ -1,8 +1,10 @@
 /**
  * Unit tests for src/services/notifications.ts
  *
- * All three exported functions are tested here:
- *   - registerForPushNotifications
+ * All exported functions are tested here:
+ *   - scheduleDailyReminder
+ *   - cancelDailyReminder
+ *   - registerForPushNotifications (dormant; kept for a possible server-push revival)
  *   - dismissTodayNotification
  *   - getNotificationPermissionStatus
  *
@@ -19,6 +21,9 @@ jest.mock('expo-notifications', () => ({
   getExpoPushTokenAsync: jest.fn(),
   getPresentedNotificationsAsync: jest.fn(),
   dismissNotificationAsync: jest.fn(),
+  scheduleNotificationAsync: jest.fn(),
+  cancelScheduledNotificationAsync: jest.fn(),
+  SchedulableTriggerInputTypes: { DAILY: 'daily' },
   AndroidImportance: { DEFAULT: 3 },
 }));
 
@@ -64,6 +69,8 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import {
+  scheduleDailyReminder,
+  cancelDailyReminder,
   registerForPushNotifications,
   dismissTodayNotification,
   getNotificationPermissionStatus,
@@ -78,6 +85,8 @@ const mockSetChannel = Notifications.setNotificationChannelAsync as jest.MockedF
 const mockGetToken = Notifications.getExpoPushTokenAsync as jest.MockedFunction<typeof Notifications.getExpoPushTokenAsync>;
 const mockGetPresentedNotifications = Notifications.getPresentedNotificationsAsync as jest.MockedFunction<typeof Notifications.getPresentedNotificationsAsync>;
 const mockDismissNotification = Notifications.dismissNotificationAsync as jest.MockedFunction<typeof Notifications.dismissNotificationAsync>;
+const mockScheduleNotification = Notifications.scheduleNotificationAsync as jest.MockedFunction<typeof Notifications.scheduleNotificationAsync>;
+const mockCancelScheduled = Notifications.cancelScheduledNotificationAsync as jest.MockedFunction<typeof Notifications.cancelScheduledNotificationAsync>;
 
 // ─── Shared beforeEach ────────────────────────────────────────────────────────
 
@@ -91,6 +100,8 @@ beforeEach(() => {
   mockGetToken.mockResolvedValue({ data: 'ExponentPushToken[test]', type: 'expo' } as any);
   mockGetPresentedNotifications.mockResolvedValue([]);
   mockDismissNotification.mockResolvedValue(undefined);
+  mockScheduleNotification.mockResolvedValue('daily-reading-reminder');
+  mockCancelScheduled.mockResolvedValue(undefined);
 
   // Supabase update chain: update() → eq() → { error: null }
   mockEq.mockResolvedValue({ error: null });
@@ -99,6 +110,116 @@ beforeEach(() => {
   // Reset module-level mutable properties
   (Device as any).isDevice = true;
   (Platform as any).OS = 'ios';
+});
+
+// ─── scheduleDailyReminder ───────────────────────────────────────────────────
+
+describe('scheduleDailyReminder', () => {
+  it('schedules a repeating daily trigger at the preferred hour and minute', async () => {
+    const result = await scheduleDailyReminder('19:45:00');
+
+    expect(result).toBe(true);
+    expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
+    expect(mockScheduleNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: 'daily-reading-reminder',
+        trigger: expect.objectContaining({ type: 'daily', hour: 19, minute: 45 }),
+      })
+    );
+  });
+
+  it('accepts an "HH:MM" time without seconds', async () => {
+    await scheduleDailyReminder('07:05');
+
+    expect(mockScheduleNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: expect.objectContaining({ hour: 7, minute: 5 }) })
+    );
+  });
+
+  it('cancels the existing reminder before scheduling so a changed time replaces it', async () => {
+    const order: string[] = [];
+    mockCancelScheduled.mockImplementation(async () => { order.push('cancel'); });
+    mockScheduleNotification.mockImplementation(async () => { order.push('schedule'); return 'id'; });
+
+    await scheduleDailyReminder('08:00:00');
+
+    expect(mockCancelScheduled).toHaveBeenCalledWith('daily-reading-reminder');
+    expect(order).toEqual(['cancel', 'schedule']);
+  });
+
+  it('works on a simulator/emulator (no Device.isDevice gate)', async () => {
+    (Device as any).isDevice = false;
+
+    const result = await scheduleDailyReminder('07:00:00');
+
+    expect(result).toBe(true);
+    expect(mockScheduleNotification).toHaveBeenCalled();
+  });
+
+  it('requests permission when undetermined and schedules on grant', async () => {
+    mockGetPermissions.mockResolvedValue({ status: 'undetermined' } as any);
+    mockRequestPermissions.mockResolvedValue({ status: 'granted' } as any);
+
+    const result = await scheduleDailyReminder('07:00:00');
+
+    expect(mockRequestPermissions).toHaveBeenCalledTimes(1);
+    expect(result).toBe(true);
+    expect(mockScheduleNotification).toHaveBeenCalled();
+  });
+
+  it('does not schedule and returns false when permission is denied', async () => {
+    mockGetPermissions.mockResolvedValue({ status: 'denied' } as any);
+    mockRequestPermissions.mockResolvedValue({ status: 'denied' } as any);
+
+    const result = await scheduleDailyReminder('07:00:00');
+
+    expect(result).toBe(false);
+    expect(mockScheduleNotification).not.toHaveBeenCalled();
+    expect(mockCancelScheduled).not.toHaveBeenCalled();
+  });
+
+  it('sets the Android channel and targets it from the trigger', async () => {
+    (Platform as any).OS = 'android';
+
+    await scheduleDailyReminder('07:00:00');
+
+    expect(mockSetChannel).toHaveBeenCalledWith('default', expect.objectContaining({ name: 'Daily Reminders' }));
+    expect(mockScheduleNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: expect.objectContaining({ channelId: 'default' }) })
+    );
+  });
+
+  it('does not set an Android channel on iOS', async () => {
+    (Platform as any).OS = 'ios';
+
+    await scheduleDailyReminder('07:00:00');
+
+    expect(mockSetChannel).not.toHaveBeenCalled();
+  });
+
+  it.each(['', 'abc', '25:00:00', '07:60:00', '-1:00:00', '07'])(
+    'throws on a malformed or out-of-range time (%p) without scheduling',
+    async (bad) => {
+      await expect(scheduleDailyReminder(bad)).rejects.toThrow('invalid time');
+      expect(mockScheduleNotification).not.toHaveBeenCalled();
+    }
+  );
+
+  it('propagates errors from scheduleNotificationAsync', async () => {
+    mockScheduleNotification.mockRejectedValue(new Error('alarm service unavailable'));
+
+    await expect(scheduleDailyReminder('07:00:00')).rejects.toThrow('alarm service unavailable');
+  });
+});
+
+// ─── cancelDailyReminder ─────────────────────────────────────────────────────
+
+describe('cancelDailyReminder', () => {
+  it('cancels the daily reminder by its fixed identifier', async () => {
+    await cancelDailyReminder();
+
+    expect(mockCancelScheduled).toHaveBeenCalledWith('daily-reading-reminder');
+  });
 });
 
 // ─── registerForPushNotifications ────────────────────────────────────────────
@@ -298,13 +419,14 @@ describe('dismissTodayNotification', () => {
 // ─── getNotificationPermissionStatus ─────────────────────────────────────────
 
 describe('getNotificationPermissionStatus', () => {
-  it('returns "undetermined" on simulator without calling getPermissionsAsync', async () => {
+  it('reads the real permission status on a simulator/emulator too', async () => {
     (Device as any).isDevice = false;
+    mockGetPermissions.mockResolvedValue({ status: 'granted' } as any);
 
     const result = await getNotificationPermissionStatus();
 
-    expect(result).toBe('undetermined');
-    expect(mockGetPermissions).not.toHaveBeenCalled();
+    expect(result).toBe('granted');
+    expect(mockGetPermissions).toHaveBeenCalledTimes(1);
   });
 
   it('returns "granted" when permission is granted on a real device', async () => {
