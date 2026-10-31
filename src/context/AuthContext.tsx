@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 import * as Sentry from '@sentry/react-native';
 import { supabase } from '../services/supabase';
 import { ensureUserProfile } from '../services/auth';
-import { scheduleDailyReminder, cancelDailyReminder } from '../services/notifications';
+import { cancelDailyReminders } from '../services/notifications';
 import { User } from '../types';
 
 type AuthContextType = {
@@ -25,17 +25,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
-  function handleProfileLoaded(profile: User | null, syncReminder = false) {
+  function handleProfileLoaded(profile: User | null) {
     if (profile) {
       setUser(profile);
       setNeedsOnboarding(false);
-      if (syncReminder) {
-        // Failures must be visible — a silent catch here is what made the
-        // previous push-based setup undiagnosable.
-        scheduleDailyReminder(profile.preferred_notification_time).catch((error) => {
-          Sentry.captureException(error, { tags: { context: 'daily_reminder_schedule' } });
-        });
-      }
     } else {
       setNeedsOnboarding(true);
     }
@@ -49,9 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        ensureUserProfile(session.user.id, session.user.email!).then(
-          (profile) => handleProfileLoaded(profile, true)
-        );
+        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
       } else {
         setLoading(false);
       }
@@ -75,18 +66,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes (login, logout, token refresh)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        ensureUserProfile(session.user.id, session.user.email!).then(
-          (profile) => handleProfileLoaded(profile, event === 'SIGNED_IN')
-        );
+        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
       } else {
-        // User signed out — stop this device's reminder so it doesn't keep
+        // User signed out — stop this device's reminders so they don't keep
         // firing for (or at the time of) the previous account.
-        cancelDailyReminder().catch((error) => {
+        cancelDailyReminders().catch((error) => {
           Sentry.captureException(error, { tags: { context: 'daily_reminder_cancel' } });
         });
         setUser(null);

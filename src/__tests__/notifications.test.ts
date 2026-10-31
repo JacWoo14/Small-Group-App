@@ -2,8 +2,9 @@
  * Unit tests for src/services/notifications.ts
  *
  * All exported functions are tested here:
- *   - scheduleDailyReminder
- *   - cancelDailyReminder
+ *   - scheduleDailyReminders
+ *   - cancelDailyReminders
+ *   - handleReminderResponse (the "Mark complete" notification action)
  *   - registerForPushNotifications (dormant; kept for a possible server-push revival)
  *   - dismissTodayNotification
  *   - getNotificationPermissionStatus
@@ -23,6 +24,8 @@ jest.mock('expo-notifications', () => ({
   dismissNotificationAsync: jest.fn(),
   scheduleNotificationAsync: jest.fn(),
   cancelScheduledNotificationAsync: jest.fn(),
+  getAllScheduledNotificationsAsync: jest.fn(),
+  setNotificationCategoryAsync: jest.fn(),
   SchedulableTriggerInputTypes: { DAILY: 'daily' },
   AndroidImportance: { DEFAULT: 3 },
 }));
@@ -47,19 +50,30 @@ jest.mock('react-native', () => ({
 }));
 
 const mockCaptureMessage = jest.fn();
+const mockCaptureException = jest.fn();
 jest.mock('@sentry/react-native', () => ({
   captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
+  captureException: (...args: unknown[]) => mockCaptureException(...args),
 }));
 
 // Supabase client mock — update().eq() returns no error by default
 const mockUpdate = jest.fn();
 const mockEq = jest.fn();
+const mockGetSession = jest.fn();
 jest.mock('../services/supabase', () => ({
   supabase: {
     from: jest.fn(() => ({
       update: mockUpdate,
     })),
+    auth: {
+      getSession: (...args: unknown[]) => mockGetSession(...args),
+    },
   },
+}));
+
+const mockMarkComplete = jest.fn();
+jest.mock('../services/completions', () => ({
+  markComplete: (...args: unknown[]) => mockMarkComplete(...args),
 }));
 
 // ─── Imports ─────────────────────────────────────────────────────────────────
@@ -68,9 +82,12 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { format } from 'date-fns';
 import {
-  scheduleDailyReminder,
-  cancelDailyReminder,
+  scheduleDailyReminders,
+  cancelDailyReminders,
+  handleReminderResponse,
+  MARK_COMPLETE_ACTION_ID,
   registerForPushNotifications,
   dismissTodayNotification,
   getNotificationPermissionStatus,
@@ -87,6 +104,8 @@ const mockGetPresentedNotifications = Notifications.getPresentedNotificationsAsy
 const mockDismissNotification = Notifications.dismissNotificationAsync as jest.MockedFunction<typeof Notifications.dismissNotificationAsync>;
 const mockScheduleNotification = Notifications.scheduleNotificationAsync as jest.MockedFunction<typeof Notifications.scheduleNotificationAsync>;
 const mockCancelScheduled = Notifications.cancelScheduledNotificationAsync as jest.MockedFunction<typeof Notifications.cancelScheduledNotificationAsync>;
+const mockGetAllScheduled = Notifications.getAllScheduledNotificationsAsync as jest.MockedFunction<typeof Notifications.getAllScheduledNotificationsAsync>;
+const mockSetCategory = Notifications.setNotificationCategoryAsync as jest.MockedFunction<typeof Notifications.setNotificationCategoryAsync>;
 
 // ─── Shared beforeEach ────────────────────────────────────────────────────────
 
@@ -102,6 +121,10 @@ beforeEach(() => {
   mockDismissNotification.mockResolvedValue(undefined);
   mockScheduleNotification.mockResolvedValue('daily-reading-reminder');
   mockCancelScheduled.mockResolvedValue(undefined);
+  mockGetAllScheduled.mockResolvedValue([]);
+  mockSetCategory.mockResolvedValue({} as any);
+  mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
+  mockMarkComplete.mockResolvedValue({});
 
   // Supabase update chain: update() → eq() → { error: null }
   mockEq.mockResolvedValue({ error: null });
@@ -112,45 +135,99 @@ beforeEach(() => {
   (Platform as any).OS = 'ios';
 });
 
-// ─── scheduleDailyReminder ───────────────────────────────────────────────────
+// ─── scheduleDailyReminders ──────────────────────────────────────────────────
 
-describe('scheduleDailyReminder', () => {
-  it('schedules a repeating daily trigger at the preferred hour and minute', async () => {
-    const result = await scheduleDailyReminder('19:45:00');
+const GROUPS = [
+  { id: 'group-a', name: "Guy's Life Group" },
+  { id: 'group-b', name: 'Morning Psalms' },
+];
+
+describe('scheduleDailyReminders', () => {
+  it('schedules one repeating daily reminder per group at the preferred time', async () => {
+    const result = await scheduleDailyReminders('19:45:00', GROUPS);
 
     expect(result).toBe(true);
-    expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
+    expect(mockScheduleNotification).toHaveBeenCalledTimes(2);
     expect(mockScheduleNotification).toHaveBeenCalledWith(
       expect.objectContaining({
-        identifier: 'daily-reading-reminder',
+        identifier: 'daily-reminder-group-a',
         trigger: expect.objectContaining({ type: 'daily', hour: 19, minute: 45 }),
+      })
+    );
+    expect(mockScheduleNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ identifier: 'daily-reminder-group-b' })
+    );
+  });
+
+  it("titles each reminder with its group's name and tags it with the group id", async () => {
+    await scheduleDailyReminders('07:00:00', GROUPS);
+
+    expect(mockScheduleNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          title: "Guy's Life Group",
+          categoryIdentifier: 'reading-reminder',
+          data: { type: 'daily_reminder', group_id: 'group-a' },
+        }),
       })
     );
   });
 
+  it('registers the "Mark complete" action so it does not open the app', async () => {
+    await scheduleDailyReminders('07:00:00', GROUPS);
+
+    expect(mockSetCategory).toHaveBeenCalledWith('reading-reminder', [
+      {
+        identifier: MARK_COMPLETE_ACTION_ID,
+        buttonTitle: 'Mark complete',
+        options: { opensAppToForeground: false },
+      },
+    ]);
+  });
+
   it('accepts an "HH:MM" time without seconds', async () => {
-    await scheduleDailyReminder('07:05');
+    await scheduleDailyReminders('07:05', GROUPS);
 
     expect(mockScheduleNotification).toHaveBeenCalledWith(
       expect.objectContaining({ trigger: expect.objectContaining({ hour: 7, minute: 5 }) })
     );
   });
 
-  it('cancels the existing reminder before scheduling so a changed time replaces it', async () => {
+  it('cancels existing reminders before scheduling, so stale ones never survive', async () => {
     const order: string[] = [];
-    mockCancelScheduled.mockImplementation(async () => { order.push('cancel'); });
+    mockGetAllScheduled.mockResolvedValue([
+      { identifier: 'daily-reminder-old-group' },
+      { identifier: 'daily-reading-reminder' },
+      { identifier: 'someone-elses-notification' },
+    ] as any);
+    mockCancelScheduled.mockImplementation(async (id) => { order.push(`cancel:${id}`); });
     mockScheduleNotification.mockImplementation(async () => { order.push('schedule'); return 'id'; });
 
-    await scheduleDailyReminder('08:00:00');
+    await scheduleDailyReminders('08:00:00', GROUPS);
 
-    expect(mockCancelScheduled).toHaveBeenCalledWith('daily-reading-reminder');
-    expect(order).toEqual(['cancel', 'schedule']);
+    expect(order).toEqual([
+      'cancel:daily-reminder-old-group',
+      'cancel:daily-reading-reminder',
+      'schedule',
+      'schedule',
+    ]);
+    expect(mockCancelScheduled).not.toHaveBeenCalledWith('someone-elses-notification');
+  });
+
+  it('schedules nothing but still clears old reminders when the user has no groups', async () => {
+    mockGetAllScheduled.mockResolvedValue([{ identifier: 'daily-reminder-gone' }] as any);
+
+    const result = await scheduleDailyReminders('07:00:00', []);
+
+    expect(result).toBe(true);
+    expect(mockCancelScheduled).toHaveBeenCalledWith('daily-reminder-gone');
+    expect(mockScheduleNotification).not.toHaveBeenCalled();
   });
 
   it('works on a simulator/emulator (no Device.isDevice gate)', async () => {
     (Device as any).isDevice = false;
 
-    const result = await scheduleDailyReminder('07:00:00');
+    const result = await scheduleDailyReminders('07:00:00', GROUPS);
 
     expect(result).toBe(true);
     expect(mockScheduleNotification).toHaveBeenCalled();
@@ -160,18 +237,18 @@ describe('scheduleDailyReminder', () => {
     mockGetPermissions.mockResolvedValue({ status: 'undetermined' } as any);
     mockRequestPermissions.mockResolvedValue({ status: 'granted' } as any);
 
-    const result = await scheduleDailyReminder('07:00:00');
+    const result = await scheduleDailyReminders('07:00:00', GROUPS);
 
     expect(mockRequestPermissions).toHaveBeenCalledTimes(1);
     expect(result).toBe(true);
     expect(mockScheduleNotification).toHaveBeenCalled();
   });
 
-  it('does not schedule and returns false when permission is denied', async () => {
+  it('does not touch existing reminders and returns false when permission is denied', async () => {
     mockGetPermissions.mockResolvedValue({ status: 'denied' } as any);
     mockRequestPermissions.mockResolvedValue({ status: 'denied' } as any);
 
-    const result = await scheduleDailyReminder('07:00:00');
+    const result = await scheduleDailyReminders('07:00:00', GROUPS);
 
     expect(result).toBe(false);
     expect(mockScheduleNotification).not.toHaveBeenCalled();
@@ -181,7 +258,7 @@ describe('scheduleDailyReminder', () => {
   it('sets the Android channel and targets it from the trigger', async () => {
     (Platform as any).OS = 'android';
 
-    await scheduleDailyReminder('07:00:00');
+    await scheduleDailyReminders('07:00:00', GROUPS);
 
     expect(mockSetChannel).toHaveBeenCalledWith('default', expect.objectContaining({ name: 'Daily Reminders' }));
     expect(mockScheduleNotification).toHaveBeenCalledWith(
@@ -192,7 +269,7 @@ describe('scheduleDailyReminder', () => {
   it('does not set an Android channel on iOS', async () => {
     (Platform as any).OS = 'ios';
 
-    await scheduleDailyReminder('07:00:00');
+    await scheduleDailyReminders('07:00:00', GROUPS);
 
     expect(mockSetChannel).not.toHaveBeenCalled();
   });
@@ -200,7 +277,7 @@ describe('scheduleDailyReminder', () => {
   it.each(['', 'abc', '25:00:00', '07:60:00', '-1:00:00', '07'])(
     'throws on a malformed or out-of-range time (%p) without scheduling',
     async (bad) => {
-      await expect(scheduleDailyReminder(bad)).rejects.toThrow('invalid time');
+      await expect(scheduleDailyReminders(bad, GROUPS)).rejects.toThrow('invalid time');
       expect(mockScheduleNotification).not.toHaveBeenCalled();
     }
   );
@@ -208,19 +285,166 @@ describe('scheduleDailyReminder', () => {
   it('propagates errors from scheduleNotificationAsync', async () => {
     mockScheduleNotification.mockRejectedValue(new Error('alarm service unavailable'));
 
-    await expect(scheduleDailyReminder('07:00:00')).rejects.toThrow('alarm service unavailable');
+    await expect(scheduleDailyReminders('07:00:00', GROUPS)).rejects.toThrow('alarm service unavailable');
   });
 });
 
-// ─── cancelDailyReminder ─────────────────────────────────────────────────────
+// ─── cancelDailyReminders ────────────────────────────────────────────────────
 
-describe('cancelDailyReminder', () => {
-  it('cancels the daily reminder by its fixed identifier', async () => {
-    await cancelDailyReminder();
+describe('cancelDailyReminders', () => {
+  it("cancels this app's reminders (per-group and legacy) and leaves other notifications alone", async () => {
+    mockGetAllScheduled.mockResolvedValue([
+      { identifier: 'daily-reminder-group-a' },
+      { identifier: 'daily-reminder-group-b' },
+      { identifier: 'daily-reading-reminder' },
+      { identifier: 'unrelated' },
+    ] as any);
 
+    await cancelDailyReminders();
+
+    expect(mockCancelScheduled).toHaveBeenCalledTimes(3);
+    expect(mockCancelScheduled).toHaveBeenCalledWith('daily-reminder-group-a');
+    expect(mockCancelScheduled).toHaveBeenCalledWith('daily-reminder-group-b');
     expect(mockCancelScheduled).toHaveBeenCalledWith('daily-reading-reminder');
   });
+
+  it('is a no-op when nothing is scheduled', async () => {
+    mockGetAllScheduled.mockResolvedValue([]);
+
+    await expect(cancelDailyReminders()).resolves.toBeUndefined();
+    expect(mockCancelScheduled).not.toHaveBeenCalled();
+  });
 });
+
+// ─── handleReminderResponse ──────────────────────────────────────────────────
+
+function makeResponse(
+  overrides: {
+    actionIdentifier?: string;
+    data?: Record<string, unknown>;
+    content?: Record<string, unknown>;
+    identifier?: string;
+  } = {}
+) {
+  return {
+    actionIdentifier: overrides.actionIdentifier ?? MARK_COMPLETE_ACTION_ID,
+    notification: {
+      request: {
+        identifier: overrides.identifier ?? 'notif-123',
+        content: overrides.content ?? {
+          data: overrides.data ?? { type: 'daily_reminder', group_id: 'group-a' },
+        },
+      },
+    },
+  } as any;
+}
+
+describe('handleReminderResponse', () => {
+  it("marks today's reading complete for the notification's group and dismisses it", async () => {
+    const result = await handleReminderResponse(makeResponse());
+
+    expect(result).toBe(true);
+    expect(mockMarkComplete).toHaveBeenCalledWith('user-1', 'group-a', format(new Date(), 'yyyy-MM-dd'));
+    expect(mockDismissNotification).toHaveBeenCalledWith('notif-123');
+  });
+
+  it('treats "Already completed" as success and still dismisses the notification', async () => {
+    mockMarkComplete.mockRejectedValue(new Error('Already completed'));
+
+    const result = await handleReminderResponse(makeResponse());
+
+    expect(result).toBe(true);
+    expect(mockDismissNotification).toHaveBeenCalledWith('notif-123');
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+
+  it('ignores a plain tap (default action) without touching the database', async () => {
+    const result = await handleReminderResponse(
+      makeResponse({ actionIdentifier: 'expo.modules.notifications.actions.DEFAULT' })
+    );
+
+    expect(result).toBe(false);
+    expect(mockGetSession).not.toHaveBeenCalled();
+    expect(mockMarkComplete).not.toHaveBeenCalled();
+  });
+
+  it('reads the group id from dataString when the app is closed (background task payload has no data object)', async () => {
+    // Regression: with the app closed, the task delivers content.dataString
+    // (a JSON string) and no content.data, so the button silently did nothing.
+    const result = await handleReminderResponse(
+      makeResponse({
+        content: { dataString: JSON.stringify({ type: 'daily_reminder', group_id: 'group-from-string' }) },
+      })
+    );
+
+    expect(result).toBe(true);
+    expect(mockMarkComplete).toHaveBeenCalledWith('user-1', 'group-from-string', format(new Date(), 'yyyy-MM-dd'));
+  });
+
+  it('falls back to the notification id (daily-reminder-<groupId>) when no data is available', async () => {
+    const result = await handleReminderResponse(
+      makeResponse({ content: {}, identifier: 'daily-reminder-group-from-id' })
+    );
+
+    expect(result).toBe(true);
+    expect(mockMarkComplete).toHaveBeenCalledWith('user-1', 'group-from-id', format(new Date(), 'yyyy-MM-dd'));
+  });
+
+  it('ignores an unparseable dataString and still resolves the group from the id', async () => {
+    const result = await handleReminderResponse(
+      makeResponse({ content: { dataString: '{not json' }, identifier: 'daily-reminder-group-a' })
+    );
+
+    expect(result).toBe(true);
+    expect(mockMarkComplete).toHaveBeenCalledWith('user-1', 'group-a', expect.any(String));
+  });
+
+  it('reports a mark-complete action whose group cannot be determined, instead of ignoring it silently', async () => {
+    const result = await handleReminderResponse(makeResponse({ data: { type: 'daily_reminder' } }));
+
+    expect(result).toBe(false);
+    expect(mockMarkComplete).not.toHaveBeenCalled();
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('without a group id'),
+      'error'
+    );
+  });
+
+  it('reports the failure and tells the user when marking complete fails', async () => {
+    const failure = new Error('network request failed');
+    mockMarkComplete.mockRejectedValue(failure);
+
+    const result = await handleReminderResponse(makeResponse());
+
+    expect(result).toBe(false);
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({ tags: expect.objectContaining({ context: 'reminder_mark_complete' }) })
+    );
+    expect(mockScheduleNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({ title: "Couldn't mark complete" }),
+      })
+    );
+    expect(mockDismissNotification).not.toHaveBeenCalled();
+  });
+
+  it('fails visibly (not silently) when there is no signed-in session', async () => {
+    mockGetSession.mockResolvedValue({ data: { session: null } });
+
+    const result = await handleReminderResponse(makeResponse());
+
+    expect(result).toBe(false);
+    expect(mockMarkComplete).not.toHaveBeenCalled();
+    expect(mockCaptureException).toHaveBeenCalled();
+    expect(mockScheduleNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({ title: "Couldn't mark complete" }),
+      })
+    );
+  });
+});
+
 
 // ─── registerForPushNotifications ────────────────────────────────────────────
 

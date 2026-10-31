@@ -4,7 +4,8 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { updateNotificationTime, signOut } from '../services/auth';
-import { getNotificationPermissionStatus, scheduleDailyReminder } from '../services/notifications';
+import { getNotificationPermissionStatus, scheduleDailyReminders } from '../services/notifications';
+import { useUserGroups } from '../hooks/useGroups';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { TimePicker } from '../components/TimePicker';
@@ -15,6 +16,7 @@ export default function SettingsScreen() {
   const { themeId, setThemeId, pendingThemeId } = useTheme();
   const [loading, setLoading] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'undetermined' | null>(null);
+  const { data: groups } = useUserGroups();
 
   useEffect(() => {
     let mounted = true;
@@ -26,7 +28,10 @@ export default function SettingsScreen() {
     if (!user) return;
     setLoading(true);
     try {
-      await scheduleDailyReminder(user.preferred_notification_time);
+      await scheduleDailyReminders(
+        user.preferred_notification_time,
+        (groups ?? []).map(({ id, name }) => ({ id, name }))
+      );
       const status = await getNotificationPermissionStatus();
       setPermissionStatus(status);
       if (status !== 'granted') {
@@ -60,15 +65,15 @@ export default function SettingsScreen() {
 
       await updateNotificationTime(user.id, timeString);
 
-      // Update local state
+      // Update local state; useReminderSync reschedules the reminders from this.
       setUser({
         ...user,
         preferred_notification_time: timeString,
       });
 
-      const scheduled = await scheduleDailyReminder(timeString);
-      setPermissionStatus(await getNotificationPermissionStatus());
-      if (scheduled) {
+      const status = await getNotificationPermissionStatus();
+      setPermissionStatus(status);
+      if (status === 'granted') {
         Alert.alert('Success', 'Notification time updated!');
       } else {
         Alert.alert(

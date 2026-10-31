@@ -7,9 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import * as Sentry from '@sentry/react-native';
 import { createUserProfile } from '../../services/auth';
-import { scheduleDailyReminder } from '../../services/notifications';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -57,11 +55,6 @@ export function OnboardingScreen() {
         email: authUser.email!,
         displayName: displayName.trim(),
         notificationTime: timeString,
-      });
-
-      // Fire-and-forget: a reminder failure must never block account creation.
-      scheduleDailyReminder(timeString).catch((error) => {
-        Sentry.captureException(error, { tags: { context: 'daily_reminder_schedule' } });
       });
 
       setUser(user);

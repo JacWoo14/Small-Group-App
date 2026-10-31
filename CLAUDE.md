@@ -57,7 +57,9 @@ Supabase (PostgreSQL)
 | `src/services/completions.ts` | `markComplete`, `getTodaysReadings` (via `get_all_todays_readings` RPC), `getGroupCompletionsForDate` |
 | `src/services/stats.ts` | `getUserStreak`, `getYesterdayGroupRecap`, `calculateStreakFromDates` (exported pure fn) |
 | `src/services/plans.ts` | `parsePlanText`, `parseDatelessPlanText`, `detectPlanFormat`, `importReadingPlan` |
-| `src/services/notifications.ts` | `scheduleDailyReminder` / `cancelDailyReminder` (on-device daily reminder — the live path, no server), `dismissTodayNotification`, `getNotificationPermissionStatus`; `registerForPushNotifications` is dormant (no callers) |
+| `src/services/notifications.ts` | On-device reminders (the live path, no server): `scheduleDailyReminders` (one daily notification per group, titled with the group name, with a "Mark complete" action), `cancelDailyReminders`, `handleReminderResponse` (action press: marks today complete for that notification's group, dismisses it, reports + notifies on failure). Also `dismissTodayNotification`, `getNotificationPermissionStatus`; `registerForPushNotifications` is dormant (no callers) |
+| `src/hooks/useReminderSync.ts` | Mounted in `MainTabNavigator`: reschedules reminders when groups or the preferred time change, and handles "Mark complete" presses while the app is open (invalidates readings/streak queries) |
+| `src/services/reminderTask.ts` | Android background task (`expo-task-manager`) for "Mark complete" presses while the app is backgrounded/closed. Must be imported from `index.ts` so it is defined at startup. Needs a native rebuild when `expo-task-manager` changes |
 | `src/hooks/useGroups.ts` | React Query hooks for all group + plan operations; `useMarkComplete` calls `dismissTodayNotification` in onSuccess |
 | `src/hooks/useProgress.ts` | `useUserStreak`, `useYesterdayRecap` |
 | `src/context/AuthContext.tsx` | `useAuth()` — session, user, profile, deep link handler; `handleProfileLoaded()` DRYs session/auth-state-change; registers push token on login |
@@ -108,6 +110,7 @@ User picks a start date in the UI; sequential dates are assigned from that point
 3. `newArchEnabled: true` causes crashes — keep `false`
 4. Do NOT use `react-native-url-polyfill` — RN 0.81 has native URL support, polyfill interferes
 5. Supabase free tier **pauses after ~1 week of inactivity** — unpause from dashboard if requests fail
+6. Notification action presses handled by the background task (app closed) deliver `request.content.dataString` (a JSON string), not `content.data`. `handleReminderResponse` reads both; anything new that reads notification data from the task must do the same. Debug builds also need Metro running for the task to execute, and use `adb shell am kill <pkg>` (not `force-stop`, which cancels scheduled alarms) to simulate a closed app
 
 ## What's Not Built Yet
 - App Store / Play Store submission

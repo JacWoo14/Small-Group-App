@@ -1,10 +1,7 @@
 /**
- * Unit tests for src/context/AuthContext.tsx's handleProfileLoaded gating
- * logic — specifically, that daily-reminder scheduling only fires on
- * initial app load and the 'SIGNED_IN' auth event, not on every auth-state
- * change (e.g. TOKEN_REFRESHED). This is a flagged regression risk: the
- * gating depends on an exact string match against Supabase SDK event names
- * with no test previously guarding it.
+ * Unit tests for src/context/AuthContext.tsx: profile loading from the initial
+ * session and auth-state events, and the sign-out cleanup that cancels this
+ * device's daily reminders. (Scheduling reminders lives in useReminderSync.)
  */
 
 import React from 'react';
@@ -33,11 +30,9 @@ jest.mock('../services/auth', () => ({
   ensureUserProfile: (...args: any[]) => mockEnsureUserProfile(...args),
 }));
 
-const mockScheduleDailyReminder = jest.fn();
-const mockCancelDailyReminder = jest.fn();
+const mockCancelDailyReminders = jest.fn();
 jest.mock('../services/notifications', () => ({
-  scheduleDailyReminder: (...args: any[]) => mockScheduleDailyReminder(...args),
-  cancelDailyReminder: (...args: any[]) => mockCancelDailyReminder(...args),
+  cancelDailyReminders: (...args: any[]) => mockCancelDailyReminders(...args),
 }));
 
 jest.mock('expo-linking', () => ({
@@ -69,90 +64,35 @@ function wrapper({ children }: { children: React.ReactNode }) {
 beforeEach(() => {
   jest.clearAllMocks();
   authStateChangeCallback = null;
-  mockScheduleDailyReminder.mockResolvedValue(true);
-  mockCancelDailyReminder.mockResolvedValue(undefined);
+  mockCancelDailyReminders.mockResolvedValue(undefined);
 });
 
-describe('AuthProvider daily-reminder gating', () => {
-  it('schedules the daily reminder on initial session load', async () => {
+describe('AuthProvider profile loading', () => {
+  it('loads the profile from the initial session', async () => {
     mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     mockEnsureUserProfile.mockResolvedValue(PROFILE);
 
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     await waitFor(() => expect(result.current.user).toEqual(PROFILE));
-
-    expect(mockScheduleDailyReminder).toHaveBeenCalledWith('07:00:00');
+    expect(result.current.needsOnboarding).toBe(false);
   });
 
-  it("schedules the daily reminder on a 'SIGNED_IN' auth-state event", async () => {
+  it("loads the profile on a 'SIGNED_IN' auth-state event", async () => {
     mockGetSession.mockResolvedValue({ data: { session: null } });
     mockEnsureUserProfile.mockResolvedValue(PROFILE);
 
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
-    mockScheduleDailyReminder.mockClear();
 
     await act(async () => {
       authStateChangeCallback!('SIGNED_IN', { user: { id: 'user-1' } });
     });
-    await waitFor(() => expect(result.current.user).toEqual(PROFILE));
-
-    expect(mockScheduleDailyReminder).toHaveBeenCalledWith('07:00:00');
-  });
-
-  it("does NOT reschedule the daily reminder on a 'TOKEN_REFRESHED' auth-state event (regression guard)", async () => {
-    mockGetSession.mockResolvedValue({ data: { session: null } });
-    mockEnsureUserProfile.mockResolvedValue(PROFILE);
-
-    const { result } = renderHook(() => useAuth(), { wrapper });
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    mockScheduleDailyReminder.mockClear();
-
-    await act(async () => {
-      authStateChangeCallback!('TOKEN_REFRESHED', { user: { id: 'user-1' } });
-    });
-    await waitFor(() => expect(result.current.user).toEqual(PROFILE));
-
-    expect(mockScheduleDailyReminder).not.toHaveBeenCalled();
-  });
-
-  it('clears the user and cancels the daily reminder when the session ends (sign out)', async () => {
-    mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
-    mockEnsureUserProfile.mockResolvedValue(PROFILE);
-
-    const { result } = renderHook(() => useAuth(), { wrapper });
-    await waitFor(() => expect(result.current.user).toEqual(PROFILE));
-    mockScheduleDailyReminder.mockClear();
-    mockCancelDailyReminder.mockClear();
-
-    await act(async () => {
-      authStateChangeCallback!('SIGNED_OUT', null);
-    });
-
-    expect(result.current.user).toBeNull();
-    expect(mockScheduleDailyReminder).not.toHaveBeenCalled();
-    expect(mockCancelDailyReminder).toHaveBeenCalledTimes(1);
-  });
-
-  it('reports reminder scheduling failures to Sentry instead of swallowing them (regression guard)', async () => {
-    mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
-    mockEnsureUserProfile.mockResolvedValue(PROFILE);
-    const scheduleError = new Error('scheduleNotificationAsync failed');
-    mockScheduleDailyReminder.mockRejectedValue(scheduleError);
-
-    const { result } = renderHook(() => useAuth(), { wrapper });
 
     await waitFor(() => expect(result.current.user).toEqual(PROFILE));
-    await waitFor(() =>
-      expect(mockCaptureException).toHaveBeenCalledWith(
-        scheduleError,
-        expect.objectContaining({ tags: expect.objectContaining({ context: 'daily_reminder_schedule' }) })
-      )
-    );
   });
 
-  it('sets needsOnboarding when no profile exists yet, without scheduling a reminder', async () => {
+  it('sets needsOnboarding when no profile exists yet', async () => {
     mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-new' } } } });
     mockEnsureUserProfile.mockResolvedValue(null);
 
@@ -161,6 +101,61 @@ describe('AuthProvider daily-reminder gating', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.needsOnboarding).toBe(true);
-    expect(mockScheduleDailyReminder).not.toHaveBeenCalled();
+    expect(mockCancelDailyReminders).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthProvider sign-out cleanup', () => {
+  it('clears the user and cancels the daily reminders when the session ends', async () => {
+    mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
+    mockEnsureUserProfile.mockResolvedValue(PROFILE);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.user).toEqual(PROFILE));
+    mockCancelDailyReminders.mockClear();
+
+    await act(async () => {
+      authStateChangeCallback!('SIGNED_OUT', null);
+    });
+
+    expect(result.current.user).toBeNull();
+    expect(mockCancelDailyReminders).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the reminders when the token refreshes (session still valid)', async () => {
+    mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
+    mockEnsureUserProfile.mockResolvedValue(PROFILE);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.user).toEqual(PROFILE));
+    mockCancelDailyReminders.mockClear();
+
+    await act(async () => {
+      authStateChangeCallback!('TOKEN_REFRESHED', { user: { id: 'user-1' } });
+    });
+    await waitFor(() => expect(result.current.user).toEqual(PROFILE));
+
+    expect(mockCancelDailyReminders).not.toHaveBeenCalled();
+  });
+
+  it('reports a failure to cancel reminders to Sentry instead of swallowing it', async () => {
+    mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
+    mockEnsureUserProfile.mockResolvedValue(PROFILE);
+    const cancelError = new Error('cancelScheduledNotificationAsync failed');
+    mockCancelDailyReminders.mockRejectedValue(cancelError);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.user).toEqual(PROFILE));
+
+    await act(async () => {
+      authStateChangeCallback!('SIGNED_OUT', null);
+    });
+
+    await waitFor(() =>
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        cancelError,
+        expect.objectContaining({ tags: expect.objectContaining({ context: 'daily_reminder_cancel' }) })
+      )
+    );
   });
 });
