@@ -7,6 +7,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { usePlanTemplates, useTemplatePreview, useInstantiateTemplate } from '../../hooks/useGroups';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { DatePicker } from '../../components/DatePicker';
 import { Colors, Typography, Spacing } from '../../constants/theme';
 import { PlanStackParamList, PlanTemplate } from '../../types';
 
@@ -16,19 +17,20 @@ type RouteProps = NativeStackScreenProps<PlanStackParamList, 'TemplatePicker'>['
 export default function TemplatePickerScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProps>();
-  const { isPersonal } = route.params ?? {};
+  const { isPersonal } = route.params;
   const { theme } = useTheme();
   const { data: templates, isLoading } = usePlanTemplates();
   const instantiateTemplate = useInstantiateTemplate();
 
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const { data: preview, isLoading: previewLoading } = useTemplatePreview(expandedId);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState(new Date());
+  const { data: preview, isLoading: previewLoading } = useTemplatePreview(selectedId);
 
-  async function handleUseTemplate(template: PlanTemplate) {
+  async function handleContinue(template: PlanTemplate) {
     try {
       const plan = await instantiateTemplate.mutateAsync({
         templateId: template.id,
-        startDate: format(new Date(), 'yyyy-MM-dd'),
+        startDate: format(startDate, 'yyyy-MM-dd'),
       });
       navigation.navigate('CreateGroup', { isPersonal, preselectedPlanId: plan.id });
     } catch (error: any) {
@@ -65,19 +67,27 @@ export default function TemplatePickerScreen() {
     <ScrollView style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.hint}>
-          Tap a plan to preview it, or start it right away.
+          Tap a plan to preview it, pick a start date, and continue.
         </Text>
 
         {sorted.map((template) => {
-          const isExpanded = expandedId === template.id;
+          const isSelected = selectedId === template.id;
           return (
-            <Card key={template.id} style={styles.templateCard}>
+            <Card
+              key={template.id}
+              style={[
+                styles.templateCard,
+                isSelected && { borderColor: theme.primary, backgroundColor: theme.selectedBackground },
+              ]}
+            >
               <TouchableOpacity
-                onPress={() => setExpandedId(isExpanded ? null : template.id)}
+                onPress={() => setSelectedId(isSelected ? null : template.id)}
                 activeOpacity={0.7}
               >
                 <View style={styles.templateHeader}>
-                  <Text style={styles.templateName}>{template.name}</Text>
+                  <Text style={[styles.templateName, isSelected && { color: theme.primary }]}>
+                    {template.name}
+                  </Text>
                   {template.category && (
                     <View style={[styles.categoryBadge, { backgroundColor: theme.selectedBackground }]}>
                       <Text style={[styles.categoryText, { color: theme.primary }]}>
@@ -92,8 +102,8 @@ export default function TemplatePickerScreen() {
                 )}
               </TouchableOpacity>
 
-              {isExpanded && (
-                <View style={styles.previewSection}>
+              {isSelected && (
+                <View style={styles.selectedSection}>
                   {previewLoading ? (
                     <ActivityIndicator color={theme.primary} style={styles.previewLoading} />
                   ) : (
@@ -105,11 +115,12 @@ export default function TemplatePickerScreen() {
                     ))
                   )}
 
+                  <DatePicker label="Start Date" value={startDate} onChange={setStartDate} />
+
                   <Button
-                    title="Start This Plan"
-                    onPress={() => handleUseTemplate(template)}
+                    title="Continue"
+                    onPress={() => handleContinue(template)}
                     loading={instantiateTemplate.isPending}
-                    style={styles.startButton}
                   />
                 </View>
               )}
@@ -148,6 +159,8 @@ const styles = StyleSheet.create({
   },
   templateCard: {
     marginBottom: Spacing.sm,
+    borderWidth: 2,
+    borderColor: Colors.border,
   },
   templateHeader: {
     flexDirection: 'row',
@@ -180,7 +193,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: Spacing.xs,
   },
-  previewSection: {
+  selectedSection: {
     marginTop: Spacing.md,
     paddingTop: Spacing.md,
     borderTopWidth: 1,
@@ -200,8 +213,5 @@ const styles = StyleSheet.create({
   previewPassage: {
     ...Typography.body,
     color: Colors.text,
-  },
-  startButton: {
-    marginTop: Spacing.sm,
   },
 });

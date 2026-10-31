@@ -1,9 +1,7 @@
--- Removes 5 leftover placeholder/test plan_templates rows, created
--- 2026-09-20 00:24:17 UTC -- before any of the Phase 3 real-content work
--- that day (the 8 real plans were seeded at 19:46 and 20:00 that same
--- day). These don't match any content this epic generated; they look like
--- sample rows inserted while verifying the plan_templates table itself
--- (built in Phase 1, 20260919_add_plan_templates.sql) still worked.
+-- Removes the 5 plan_templates rows seeded by 20260919_seed_plan_templates.sql
+-- (created 2026-09-20 00:24:17 UTC, before the 8 sourced plans were seeded at
+-- 19:46 and 20:00 that day). These were a deliberate earlier seed, not test
+-- data; an earlier version of this comment wrongly called them placeholders.
 --
 -- They're short, single-book plans (7/50/21/31/30 days) -- exactly the
 -- category the app owner decided belongs to custom plan creation, not the
