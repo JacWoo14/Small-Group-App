@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import * as Sentry from '@sentry/react-native';
 import { useAuth } from '../context/AuthContext';
-import { dismissTodayNotification } from '../services/notifications';
+import { dismissTodayNotification, cancelReadingReminder } from '../services/notifications';
 import {
   getUserGroups,
   getGroupDetails,
@@ -15,7 +15,7 @@ import {
 } from '../services/groups';
 import { getTodaysReadings, markComplete } from '../services/completions';
 import { importReadingPlan, ParsedReading } from '../services/plans';
-import { getPlanTemplates, instantiateTemplate } from '../services/planTemplates';
+import { getPlanTemplates, getTemplatePreview, instantiateTemplate } from '../services/planTemplates';
 
 export function useUserGroups() {
   const { user } = useAuth();
@@ -85,6 +85,15 @@ export function usePlanTemplates() {
   });
 }
 
+export function useTemplatePreview(templateId: string | null) {
+  return useQuery({
+    queryKey: ['planTemplatePreview', templateId],
+    queryFn: () => getTemplatePreview(templateId!),
+    enabled: !!templateId,
+    staleTime: 60 * 60 * 1000, // 1 hour — built-in catalog changes rarely
+  });
+}
+
 export function useInstantiateTemplate() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -136,6 +145,10 @@ export function useMarkComplete() {
       if (variables.readingDate === today) {
         dismissTodayNotification(variables.groupId).catch((error) => {
           Sentry.captureException(error, { tags: { context: 'dismiss_notification' } });
+        });
+        // Also stop today's reminder if it hasn't fired yet.
+        cancelReadingReminder(variables.groupId, today).catch((error) => {
+          Sentry.captureException(error, { tags: { context: 'cancel_reminder' } });
         });
       }
       queryClient.invalidateQueries({ queryKey: ['readings', user?.id, variables.readingDate] });

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { PlanTemplate, ReadingPlan } from '../types';
+import { PlanTemplate, PlanTemplateReading, ReadingPlan } from '../types';
 
 /**
  * Get all built-in plan templates for browsing (default plan catalog).
@@ -9,6 +9,24 @@ export async function getPlanTemplates(): Promise<PlanTemplate[]> {
     .from('plan_templates')
     .select('*')
     .order('name');
+
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * First few days of a template's readings, for browse/preview before selecting.
+ */
+export async function getTemplatePreview(
+  templateId: string,
+  limit = 3
+): Promise<Pick<PlanTemplateReading, 'day_number' | 'passages'>[]> {
+  const { data, error } = await supabase
+    .from('plan_template_readings')
+    .select('day_number, passages')
+    .eq('template_id', templateId)
+    .order('day_number')
+    .limit(limit);
 
   if (error) throw error;
   return data || [];
