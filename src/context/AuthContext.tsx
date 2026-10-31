@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 import * as Sentry from '@sentry/react-native';
 import { supabase } from '../services/supabase';
 import { ensureUserProfile } from '../services/auth';
-import { cancelDailyReminders } from '../services/notifications';
+import { cancelReadingReminders } from '../services/notifications';
 import { User } from '../types';
 
 type AuthContextType = {
@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         // User signed out — stop this device's reminders so they don't keep
         // firing for (or at the time of) the previous account.
-        cancelDailyReminders().catch((error) => {
+        cancelReadingReminders().catch((error) => {
           Sentry.captureException(error, { tags: { context: 'daily_reminder_cancel' } });
         });
         setUser(null);

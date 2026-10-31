@@ -9,15 +9,37 @@ import { markComplete } from './completions';
 
 const VIBRATION_PATTERN_MS: number[] = [0, 250, 250, 250];
 const ANDROID_CHANNEL_ID = 'default';
-const REMINDER_ID_PREFIX = 'daily-reminder-';
-// Id of the single generic reminder scheduled by the previous version; still
-// cancelled so an upgraded install doesn't fire it alongside the per-group ones.
+// One notification per group per day, id `reading-reminder-<groupId>-<YYYY-MM-DD>`.
+const REMINDER_ID_PREFIX = 'reading-reminder-';
+const REMINDER_ID_PATTERN = /^reading-reminder-(.+)-(\d{4}-\d{2}-\d{2})$/;
+// Ids from earlier versions (a repeating per-group reminder, and before that
+// one generic reminder). Still cancelled so an upgraded install doesn't fire
+// them alongside the current ones.
+const PREVIOUS_REMINDER_ID_PREFIX = 'daily-reminder-';
 const LEGACY_REMINDER_ID = 'daily-reading-reminder';
 const REMINDER_CATEGORY_ID = 'reading-reminder';
 
 export const MARK_COMPLETE_ACTION_ID = 'mark-complete';
 
-export type ReminderGroup = { id: string; name: string };
+/** One day's reading for one group, to be announced by a reminder. */
+export type ReminderItem = {
+  groupId: string;
+  groupName: string;
+  date: string; // YYYY-MM-DD
+  passages: string[];
+};
+
+function reminderId(groupId: string, date: string): string {
+  return `${REMINDER_ID_PREFIX}${groupId}-${date}`;
+}
+
+function isReminderId(identifier: string): boolean {
+  return (
+    identifier === LEGACY_REMINDER_ID ||
+    identifier.startsWith(REMINDER_ID_PREFIX) ||
+    identifier.startsWith(PREVIOUS_REMINDER_ID_PREFIX)
+  );
+}
 
 async function ensureAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
@@ -39,34 +61,41 @@ async function ensureReminderCategory(): Promise<void> {
   ]);
 }
 
-/** Cancel every reminder this app scheduled (current per-group ones and the legacy one). */
-export async function cancelDailyReminders(): Promise<void> {
+/** Cancel every reminder this app scheduled (current, previous, and legacy ids). */
+export async function cancelReadingReminders(): Promise<void> {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   for (const { identifier } of scheduled) {
-    if (identifier === LEGACY_REMINDER_ID || identifier.startsWith(REMINDER_ID_PREFIX)) {
+    if (isReminderId(identifier)) {
       await Notifications.cancelScheduledNotificationAsync(identifier);
     }
   }
 }
 
+/** Cancel one group's reminder for one date (e.g. once that reading is marked complete). */
+export async function cancelReadingReminder(groupId: string, date: string): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(reminderId(groupId, date));
+}
+
 /**
- * Replace all on-device daily reminders with one per group, at the user's
- * preferred time ("HH:MM" or "HH:MM:SS", device-local). Each notification is
- * titled with the group's name and carries a "Mark complete" action for that
- * group. Runs entirely on the phone via the OS alarm system: no push token,
+ * Replace all on-device reading reminders with one per group per day for the
+ * given readings, each firing at the user's preferred time ("HH:MM" or
+ * "HH:MM:SS", device-local). The notification is titled with the group's name,
+ * shows that day's passage(s) as its text, and carries a "Mark complete" action
+ * for that group and date. Reminders whose time has already passed today are
+ * skipped. Runs entirely on the phone via the OS alarm system: no push token,
  * FCM, or server involved, so it also works on emulators. Returns false if
  * notification permission is not granted; throws if the time is malformed.
  */
-export async function scheduleDailyReminders(
+export async function scheduleReadingReminders(
   preferredTime: string,
-  groups: ReminderGroup[]
+  reminders: ReminderItem[]
 ): Promise<boolean> {
   const [hour, minute] = preferredTime.split(':').map(Number);
   if (
     !Number.isInteger(hour) || !Number.isInteger(minute) ||
     hour < 0 || hour > 23 || minute < 0 || minute > 59
   ) {
-    throw new Error(`scheduleDailyReminders: invalid time "${preferredTime}"`);
+    throw new Error(`scheduleReadingReminders: invalid time "${preferredTime}"`);
   }
 
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -82,22 +111,31 @@ export async function scheduleDailyReminders(
   await ensureAndroidChannel();
   await ensureReminderCategory();
 
-  // Start clean so a changed time, renamed group, or left group never leaves
-  // a stale reminder behind.
-  await cancelDailyReminders();
-  for (const group of groups) {
+  // Start clean so a changed time, renamed group, changed plan, or left group
+  // never leaves a stale reminder behind.
+  await cancelReadingReminders();
+
+  const now = Date.now();
+  for (const reminder of reminders) {
+    const [year, month, day] = reminder.date.split('-').map(Number);
+    const fireAt = new Date(year, month - 1, day, hour, minute, 0, 0);
+    if (fireAt.getTime() <= now) continue;
+
     await Notifications.scheduleNotificationAsync({
-      identifier: `${REMINDER_ID_PREFIX}${group.id}`,
+      identifier: reminderId(reminder.groupId, reminder.date),
       content: {
-        title: group.name,
-        body: "Time for today's reading.",
+        title: reminder.groupName,
+        body: reminder.passages.join(', '),
         categoryIdentifier: REMINDER_CATEGORY_ID,
-        data: { type: 'daily_reminder', group_id: group.id },
+        data: {
+          type: 'daily_reminder',
+          group_id: reminder.groupId,
+          reading_date: reminder.date,
+        },
       },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour,
-        minute,
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: fireAt,
         channelId: ANDROID_CHANNEL_ID,
       },
     });
@@ -106,37 +144,55 @@ export async function scheduleDailyReminders(
 }
 
 /**
- * Which group a reminder belongs to. The in-app listener delivers the data
- * as an object, but the background task (app closed) delivers it only as a
- * JSON string (`dataString`), so `content.data` is undefined there. The
- * notification id (`daily-reminder-<groupId>`) is the last resort.
+ * Which group and reading date a reminder is for. The in-app listener
+ * delivers the data as an object, but the background task (app closed)
+ * delivers it only as a JSON string (`dataString`), so `content.data` can be
+ * missing there. The notification id (`reading-reminder-<groupId>-<date>`) is
+ * the last resort.
  */
-function getReminderGroupId(request: Notifications.NotificationRequest): string | undefined {
-  const fromData = request.content.data?.group_id;
-  if (typeof fromData === 'string') return fromData;
-
+function getReminderTarget(request: Notifications.NotificationRequest): {
+  groupId?: string;
+  readingDate?: string;
+} {
+  const sources: Array<Record<string, unknown> | undefined> = [request.content.data];
   const dataString = (request.content as { dataString?: unknown }).dataString;
   if (typeof dataString === 'string') {
     try {
-      const fromString = JSON.parse(dataString)?.group_id;
-      if (typeof fromString === 'string') return fromString;
+      sources.push(JSON.parse(dataString));
     } catch {
       // fall through to the id
     }
   }
+  const read = (key: string): string | undefined => {
+    for (const source of sources) {
+      const value = source?.[key];
+      if (typeof value === 'string') return value;
+    }
+    return undefined;
+  };
 
-  return request.identifier.startsWith(REMINDER_ID_PREFIX)
-    ? request.identifier.slice(REMINDER_ID_PREFIX.length)
-    : undefined;
+  let groupId = read('group_id');
+  let readingDate = read('reading_date');
+  if (!groupId || !readingDate) {
+    const match = REMINDER_ID_PATTERN.exec(request.identifier);
+    if (match) {
+      groupId ??= match[1];
+      readingDate ??= match[2];
+    } else if (!groupId && request.identifier.startsWith(PREVIOUS_REMINDER_ID_PREFIX)) {
+      groupId = request.identifier.slice(PREVIOUS_REMINDER_ID_PREFIX.length);
+    }
+  }
+  return { groupId, readingDate };
 }
 
 /**
- * Handle the user pressing "Mark complete" on a reminder: record today's
- * completion for that notification's group, then clear it from the tray.
- * Runs from a background task (app closed or backgrounded) as well as from
- * the in-app listener, so it must be idempotent. Returns true if the response
- * was a mark-complete action that succeeded; failures are reported and surfaced
- * to the user with a follow-up notification, since a silent failure from a
+ * Handle the user pressing "Mark complete" on a reminder: record the
+ * completion for that notification's group and reading date (today, for
+ * reminders without a date), then clear it from the tray. Runs from a
+ * background task (app closed or backgrounded) as well as from the in-app
+ * listener, so it must be idempotent. Returns true if the response was a
+ * mark-complete action that succeeded; failures are reported and surfaced to
+ * the user with a follow-up notification, since a silent failure from a
  * button press looks like success.
  */
 export async function handleReminderResponse(
@@ -144,8 +200,7 @@ export async function handleReminderResponse(
 ): Promise<boolean> {
   if (response.actionIdentifier !== MARK_COMPLETE_ACTION_ID) return false;
   const { request } = response.notification;
-  const { identifier } = request;
-  const groupId = getReminderGroupId(request);
+  const { groupId, readingDate } = getReminderTarget(request);
   if (!groupId) {
     Sentry.captureMessage('handleReminderResponse: mark-complete action without a group id', 'error');
     return false;
@@ -156,19 +211,19 @@ export async function handleReminderResponse(
     if (!session?.user) throw new Error('Not signed in');
 
     try {
-      await markComplete(session.user.id, groupId, format(new Date(), 'yyyy-MM-dd'));
+      await markComplete(session.user.id, groupId, readingDate ?? format(new Date(), 'yyyy-MM-dd'));
     } catch (error: any) {
       // Already marked (in the app or by a duplicate delivery of this action).
       if (error?.message !== 'Already completed') throw error;
     }
-    await Notifications.dismissNotificationAsync(identifier);
+    await Notifications.dismissNotificationAsync(request.identifier);
     return true;
   } catch (error) {
     Sentry.captureException(error, { tags: { context: 'reminder_mark_complete' } });
     await Notifications.scheduleNotificationAsync({
       content: {
         title: "Couldn't mark complete",
-        body: "Open the app to mark today's reading complete.",
+        body: "Open the app to mark the reading complete.",
         data: { type: 'reminder_action_failed' },
       },
       trigger: { channelId: ANDROID_CHANNEL_ID },
@@ -180,7 +235,7 @@ export async function handleReminderResponse(
 /**
  * Request notification permissions and save the Expo push token to the DB.
  * Dormant: nothing calls this since reminders moved on-device (see
- * scheduleDailyReminders). Kept for if server-driven push is revived for
+ * scheduleReadingReminders). Kept for if server-driven push is revived for
  * group-aware notifications. Silently skips if on a simulator or if the
  * user has already denied permissions.
  */

@@ -30,9 +30,9 @@ jest.mock('../services/auth', () => ({
   ensureUserProfile: (...args: any[]) => mockEnsureUserProfile(...args),
 }));
 
-const mockCancelDailyReminders = jest.fn();
+const mockCancelReadingReminders = jest.fn();
 jest.mock('../services/notifications', () => ({
-  cancelDailyReminders: (...args: any[]) => mockCancelDailyReminders(...args),
+  cancelReadingReminders: (...args: any[]) => mockCancelReadingReminders(...args),
 }));
 
 jest.mock('expo-linking', () => ({
@@ -64,7 +64,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 beforeEach(() => {
   jest.clearAllMocks();
   authStateChangeCallback = null;
-  mockCancelDailyReminders.mockResolvedValue(undefined);
+  mockCancelReadingReminders.mockResolvedValue(undefined);
 });
 
 describe('AuthProvider profile loading', () => {
@@ -101,7 +101,7 @@ describe('AuthProvider profile loading', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.needsOnboarding).toBe(true);
-    expect(mockCancelDailyReminders).not.toHaveBeenCalled();
+    expect(mockCancelReadingReminders).not.toHaveBeenCalled();
   });
 });
 
@@ -112,14 +112,14 @@ describe('AuthProvider sign-out cleanup', () => {
 
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.user).toEqual(PROFILE));
-    mockCancelDailyReminders.mockClear();
+    mockCancelReadingReminders.mockClear();
 
     await act(async () => {
       authStateChangeCallback!('SIGNED_OUT', null);
     });
 
     expect(result.current.user).toBeNull();
-    expect(mockCancelDailyReminders).toHaveBeenCalledTimes(1);
+    expect(mockCancelReadingReminders).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the reminders when the token refreshes (session still valid)', async () => {
@@ -128,21 +128,21 @@ describe('AuthProvider sign-out cleanup', () => {
 
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.user).toEqual(PROFILE));
-    mockCancelDailyReminders.mockClear();
+    mockCancelReadingReminders.mockClear();
 
     await act(async () => {
       authStateChangeCallback!('TOKEN_REFRESHED', { user: { id: 'user-1' } });
     });
     await waitFor(() => expect(result.current.user).toEqual(PROFILE));
 
-    expect(mockCancelDailyReminders).not.toHaveBeenCalled();
+    expect(mockCancelReadingReminders).not.toHaveBeenCalled();
   });
 
   it('reports a failure to cancel reminders to Sentry instead of swallowing it', async () => {
     mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     mockEnsureUserProfile.mockResolvedValue(PROFILE);
     const cancelError = new Error('cancelScheduledNotificationAsync failed');
-    mockCancelDailyReminders.mockRejectedValue(cancelError);
+    mockCancelReadingReminders.mockRejectedValue(cancelError);
 
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.user).toEqual(PROFILE));

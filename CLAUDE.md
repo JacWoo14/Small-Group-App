@@ -57,8 +57,9 @@ Supabase (PostgreSQL)
 | `src/services/completions.ts` | `markComplete`, `getTodaysReadings` (via `get_all_todays_readings` RPC), `getGroupCompletionsForDate` |
 | `src/services/stats.ts` | `getUserStreak`, `getYesterdayGroupRecap`, `calculateStreakFromDates` (exported pure fn) |
 | `src/services/plans.ts` | `parsePlanText`, `parseDatelessPlanText`, `detectPlanFormat`, `importReadingPlan` |
-| `src/services/notifications.ts` | On-device reminders (the live path, no server): `scheduleDailyReminders` (one daily notification per group, titled with the group name, with a "Mark complete" action), `cancelDailyReminders`, `handleReminderResponse` (action press: marks today complete for that notification's group, dismisses it, reports + notifies on failure). Also `dismissTodayNotification`, `getNotificationPermissionStatus`; `registerForPushNotifications` is dormant (no callers) |
-| `src/hooks/useReminderSync.ts` | Mounted in `MainTabNavigator`: reschedules reminders when groups or the preferred time change, and handles "Mark complete" presses while the app is open (invalidates readings/streak queries) |
+| `src/services/notifications.ts` | On-device reminders (the live path, no server): `scheduleReadingReminders` (one dated notification per group per day, titled with the group name, text = that day's passage(s), with a "Mark complete" action; ids `reading-reminder-<groupId>-<date>`), `cancelReadingReminders`, `cancelReadingReminder(groupId, date)`, `handleReminderResponse` (action press: marks that reminder's reading date complete for its group, dismisses it, reports + notifies on failure). Also `dismissTodayNotification`, `getNotificationPermissionStatus`; `registerForPushNotifications` is dormant (no callers) |
+| `src/services/reminders.ts` | `getUpcomingReminders`: next 14 days of readings (one `get_all_todays_readings` call per date), skipping completed readings and empty days; rejects on any failure so a partial schedule never replaces a good one |
+| `src/hooks/useReminderSync.ts` | Mounted in `MainTabNavigator`: reschedules reminders when groups, plans, or the preferred time change, and when the app returns to the foreground on a new day (rolls the 14-day window forward); handles "Mark complete" presses while the app is open (invalidates readings/streak queries). `useMarkComplete` also cancels today's pending reminder |
 | `src/services/reminderTask.ts` | Android background task (`expo-task-manager`) for "Mark complete" presses while the app is backgrounded/closed. Must be imported from `index.ts` so it is defined at startup. Needs a native rebuild when `expo-task-manager` changes |
 | `src/hooks/useGroups.ts` | React Query hooks for all group + plan operations; `useMarkComplete` calls `dismissTodayNotification` in onSuccess |
 | `src/hooks/useProgress.ts` | `useUserStreak`, `useYesterdayRecap` |
@@ -114,7 +115,8 @@ User picks a start date in the UI; sequential dates are assigned from that point
 
 ## What's Not Built Yet
 - App Store / Play Store submission
-- Smarter on-device reminders: skip/cancel today's reminder once the reading is marked complete, and put the real passage in the notification body (schedule the next ~14 days from plan data, refreshed on app open)
+- Reminders only reach 14 days ahead; if the app isn't opened for that long they stop until it is. A single ranged lookup (instead of one RPC per day) would cut the 14 calls per sync
+- Exact-alarm permission (`SCHEDULE_EXACT_ALARM`) so reminders fire on the minute instead of within an inexact window (see TODOS.md)
 
 ## Skill routing
 

@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import * as Sentry from '@sentry/react-native';
 import { useAuth } from '../context/AuthContext';
-import { dismissTodayNotification } from '../services/notifications';
+import { dismissTodayNotification, cancelReadingReminder } from '../services/notifications';
 import {
   getUserGroups,
   getGroupDetails,
@@ -145,6 +145,10 @@ export function useMarkComplete() {
       if (variables.readingDate === today) {
         dismissTodayNotification(variables.groupId).catch((error) => {
           Sentry.captureException(error, { tags: { context: 'dismiss_notification' } });
+        });
+        // Also stop today's reminder if it hasn't fired yet.
+        cancelReadingReminder(variables.groupId, today).catch((error) => {
+          Sentry.captureException(error, { tags: { context: 'cancel_reminder' } });
         });
       }
       queryClient.invalidateQueries({ queryKey: ['readings', user?.id, variables.readingDate] });

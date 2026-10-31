@@ -4,8 +4,8 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { updateNotificationTime, signOut } from '../services/auth';
-import { getNotificationPermissionStatus, scheduleDailyReminders } from '../services/notifications';
-import { useUserGroups } from '../hooks/useGroups';
+import { getNotificationPermissionStatus, scheduleReadingReminders } from '../services/notifications';
+import { getUpcomingReminders } from '../services/reminders';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { TimePicker } from '../components/TimePicker';
@@ -16,7 +16,6 @@ export default function SettingsScreen() {
   const { themeId, setThemeId, pendingThemeId } = useTheme();
   const [loading, setLoading] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'undetermined' | null>(null);
-  const { data: groups } = useUserGroups();
 
   useEffect(() => {
     let mounted = true;
@@ -28,10 +27,8 @@ export default function SettingsScreen() {
     if (!user) return;
     setLoading(true);
     try {
-      await scheduleDailyReminders(
-        user.preferred_notification_time,
-        (groups ?? []).map(({ id, name }) => ({ id, name }))
-      );
+      const reminders = await getUpcomingReminders(user.id, user.timezone);
+      await scheduleReadingReminders(user.preferred_notification_time, reminders);
       const status = await getNotificationPermissionStatus();
       setPermissionStatus(status);
       if (status !== 'granted') {
