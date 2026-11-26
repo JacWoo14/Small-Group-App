@@ -83,8 +83,17 @@ Deno.serve(async (_req) => {
   // -------------------------------------------------------------------
   const readingsPerUser = await Promise.all(
     targetUsers.map(async (user) => {
-      const { data } = await supabase.rpc('get_all_todays_readings', { user_uuid: user.id });
-      return { user, readings: (data || []) as any[] };
+      const tz = VALID_TIMEZONES.has(user.timezone) ? user.timezone : 'UTC';
+      const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
+      const [{ data }, { data: behindData }] = await Promise.all([
+        supabase.rpc('get_all_todays_readings', { user_uuid: user.id, p_date: localDate }),
+        supabase.rpc('get_days_behind', { user_uuid: user.id, p_date: localDate }),
+      ]);
+      const daysBehindByGroup = new Map<string, number>();
+      for (const row of (behindData || []) as any[]) {
+        daysBehindByGroup.set(row.group_id, row.days_behind);
+      }
+      return { user, readings: (data || []) as any[], daysBehindByGroup };
     })
   );
 
@@ -135,7 +144,7 @@ Deno.serve(async (_req) => {
   const messages: (PushMessage & { userId: string })[] = [];
   const invalidUserIds: string[] = [];
 
-  for (const { user, readings } of readingsPerUser) {
+  for (const { user, readings, daysBehindByGroup } of readingsPerUser) {
     if (readings.length === 0) continue;
 
     const tz = VALID_TIMEZONES.has(user.timezone) ? user.timezone : 'UTC';
@@ -163,6 +172,10 @@ Deno.serve(async (_req) => {
       const passageText = safePassage + (passages.length > 1 ? ` +${passages.length - 1}` : '');
 
       let body = passageText;
+      const daysBehind = daysBehindByGroup.get(groupId) ?? 0;
+      if (daysBehind > 0) {
+        body += ` (${daysBehind} ${daysBehind === 1 ? 'day' : 'days'} behind)`;
+      }
       if (memberCount > 1) {
         body += ` · Yesterday: ${completedCount}/${memberCount}`;
       }
