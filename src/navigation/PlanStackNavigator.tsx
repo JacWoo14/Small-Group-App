@@ -11,6 +11,7 @@ import CreateGroupScreen from '../screens/plans/CreateGroupScreen';
 import JoinGroupScreen from '../screens/plans/JoinGroupScreen';
 import PlanDetailsScreen from '../screens/plans/PlanDetailsScreen';
 import ImportPlanScreen from '../screens/plans/ImportPlanScreen';
+import CreatePlanScreen from '../screens/plans/CreatePlanScreen';
 
 const Stack = createNativeStackNavigator<PlanStackParamList>();
 
@@ -64,6 +65,11 @@ export default function PlanStackNavigator() {
         name="ImportPlan"
         component={ImportPlanScreen}
         options={{ title: 'Import Plan' }}
+      />
+      <Stack.Screen
+        name="CreatePlan"
+        component={CreatePlanScreen}
+        options={{ title: 'Build a Plan' }}
       />
     </Stack.Navigator>
   );

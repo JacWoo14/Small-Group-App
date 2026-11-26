@@ -36,12 +36,26 @@ export default function ChoosePlanSourceScreen() {
 
       <TouchableOpacity
         style={[styles.option, { borderColor: theme.primary }]}
+        onPress={() => navigation.navigate('CreatePlan', { isPersonal })}
+        activeOpacity={0.7}
+      >
+        <MaterialCommunityIcons name="calendar-edit" size={32} color={theme.primary} />
+        <View style={styles.optionText}>
+          <Text style={styles.optionTitle}>Build a Plan</Text>
+          <Text style={styles.optionDescription}>
+            Choose your days and chapters and we'll schedule it.
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.option, { borderColor: theme.primary }]}
         onPress={() => navigation.navigate('ImportPlan', { isPersonal })}
         activeOpacity={0.7}
       >
         <MaterialCommunityIcons name="clipboard-text-outline" size={32} color={theme.primary} />
         <View style={styles.optionText}>
-          <Text style={styles.optionTitle}>My Own Plan</Text>
+          <Text style={styles.optionTitle}>Import a Plan</Text>
           <Text style={styles.optionDescription}>
             Paste a reading schedule you already have.
           </Text>

@@ -252,4 +252,5 @@ export type PlanStackParamList = {
   CreateGroup: { isPersonal?: boolean; preselectedPlanId?: string } | undefined;
   JoinGroup: undefined;
   ImportPlan: { groupId?: string; isPersonal?: boolean };
+  CreatePlan: { isPersonal: boolean };
 };
