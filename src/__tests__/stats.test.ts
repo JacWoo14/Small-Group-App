@@ -6,10 +6,12 @@
 const mockOrder = jest.fn();
 const mockEq = jest.fn(() => ({ order: mockOrder }));
 const mockSelect = jest.fn(() => ({ eq: mockEq }));
+const mockRpc = jest.fn();
 
 jest.mock('../services/supabase', () => ({
   supabase: {
     from: jest.fn(() => ({ select: mockSelect })),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -18,6 +20,7 @@ import {
   getActivityDates,
   toLocalDateString,
   getUserStreak,
+  getYesterdayGroupRecap,
 } from '../services/stats';
 
 beforeEach(() => {
@@ -221,5 +224,22 @@ describe('getUserStreak', () => {
     jest.useRealTimers();
 
     expect(result).toEqual({ current: 2, longest: 2 });
+  });
+});
+
+describe('getYesterdayGroupRecap', () => {
+  it('returns an empty rest-day recap when yesterday had no reading', async () => {
+    const single = jest.fn().mockResolvedValue({ data: { created_at: '2020-01-01T00:00:00Z' }, error: null });
+    mockEq.mockReturnValue({ single } as any);
+    mockRpc.mockResolvedValue({ data: false, error: null });
+
+    const recap = await getYesterdayGroupRecap('group-1');
+
+    expect(recap.rest_day).toBe(true);
+    expect(recap.completions).toEqual([]);
+    expect(mockRpc).toHaveBeenCalledWith('group_has_reading', {
+      p_group_id: 'group-1',
+      p_date: recap.date,
+    });
   });
 });

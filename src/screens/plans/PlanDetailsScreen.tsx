@@ -289,7 +289,9 @@ export default function PlanDetailsScreen() {
         <Text style={styles.cardTitle}>Yesterday's Reading</Text>
         {!recap || recap.completions.length === 0 ? (
           <Text style={styles.recapEmpty}>
-            No data yet — check back tomorrow!
+            {recap?.rest_day
+              ? 'No reading was scheduled yesterday.'
+              : 'No data yet — check back tomorrow!'}
           </Text>
         ) : (
           recap.completions.map((member) => (

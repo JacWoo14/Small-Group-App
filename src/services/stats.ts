@@ -134,6 +134,16 @@ export async function getYesterdayGroupRecap(groupId: string): Promise<GroupReca
     return { date: yesterday, total_members: 0, completions: [] };
   }
 
+  // No recap for a rest day: nobody had anything to read. If the check fails
+  // (for example before its migration is applied), show the recap as usual.
+  const { data: hadReading } = await supabase.rpc('group_has_reading', {
+    p_group_id: groupId,
+    p_date: yesterday,
+  });
+  if (hadReading === false) {
+    return { date: yesterday, total_members: 0, completions: [], rest_day: true };
+  }
+
   // Get active members who joined before yesterday (new members excluded from recap)
   const { data: members, error: membersError } = await supabase
     .from('group_members')

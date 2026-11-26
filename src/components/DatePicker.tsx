@@ -28,6 +28,7 @@ export function DatePicker({ value, onChange, label, minimumDate }: DatePickerPr
           value={dateValue}
           min={minValue}
           onChange={(e: any) => {
+            if (!e.target.value) return; // cleared field: keep the last date
             const [y, m, d] = e.target.value.split('-').map(Number);
             const newDate = new Date(y, m - 1, d);
             onChange(newDate);

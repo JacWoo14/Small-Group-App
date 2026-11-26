@@ -182,7 +182,7 @@ export default function TodayScreen() {
                 <Text style={styles.hint}>No reading scheduled for this day</Text>
               )}
 
-              {isFuture ? (
+              {reading.passages.length === 0 ? null : isFuture ? (
                 <Text style={styles.upcomingNote}>Upcoming — check back later</Text>
               ) : (
                 <Button
