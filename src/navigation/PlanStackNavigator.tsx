@@ -54,7 +54,9 @@ export default function PlanStackNavigator() {
       <Stack.Screen
         name="CreateGroup"
         component={CreateGroupScreen}
-        options={{ title: 'Create Group' }}
+        options={({ route }) => ({
+          title: route.params?.isPersonal ? 'Start Plan' : 'Create Group',
+        })}
       />
       <Stack.Screen
         name="JoinGroup"
