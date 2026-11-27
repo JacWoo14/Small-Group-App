@@ -71,47 +71,44 @@ export function toLocalDateString(isoTimestamp: string, timezone: string): strin
 }
 
 /**
- * Reduces raw completion rows to the set of reading_dates that count toward
- * a streak: a date only counts if at least one group's completion for that
- * date was actually submitted on that same calendar day (in the user's
- * timezone). Retroactively backfilling old days (an intentional, supported
- * feature — see reading_date_within_window migration) still records the
- * completion for group accountability/recap purposes, but no longer
- * inflates the streak to look identical to genuine day-by-day consistency.
- * Exported for testing.
+ * Reduces raw completion rows to the set of calendar days (in the user's
+ * timezone) on which they marked any reading complete. The streak measures
+ * reading consistency, not how caught up the user is on the plan: finishing
+ * yesterday's passage today still counts as reading today. Marking many old
+ * days in one sitting still yields a single streak day, since it is one day
+ * of activity. Exported for testing.
  */
-export function filterSameDayCompletions(
-  rows: { reading_date: string; completed_at: string | null }[],
+export function getActivityDates(
+  rows: { completed_at: string | null }[],
   timezone: string
 ): string[] {
-  const validDates = new Set<string>();
+  const days = new Set<string>();
   for (const row of rows) {
     if (!row.completed_at) continue;
-    if (toLocalDateString(row.completed_at, timezone) === row.reading_date) {
-      validDates.add(row.reading_date);
-    }
+    days.add(toLocalDateString(row.completed_at, timezone));
   }
-  return Array.from(validDates);
+  return Array.from(days);
 }
 
 /**
  * Calculate a user's current and longest reading streak across all groups.
- * A streak day counts if the user completed ANY group's reading on that
- * date AND did so on that same calendar day — retroactively backfilling
- * old days doesn't count toward the streak (see filterSameDayCompletions).
+ * A streak day is any calendar day on which the user marked ANY group's
+ * reading complete, regardless of which day's reading it was (see
+ * getActivityDates).
  */
 export async function getUserStreak(userId: string, timezone: string): Promise<StreakData> {
   const { data, error } = await supabase
     .from('reading_completions')
-    .select('reading_date, completed_at')
+    .select('completed_at')
     .eq('user_id', userId)
-    .order('reading_date', { ascending: false });
+    .order('completed_at', { ascending: false });
 
   if (error) throw error;
   if (!data || data.length === 0) return { current: 0, longest: 0 };
 
-  const dates = filterSameDayCompletions(data as any[], timezone);
-  return calculateStreakFromDates(dates);
+  const dates = getActivityDates(data as any[], timezone);
+  // "Today" must be in the user's timezone, matching the activity dates.
+  return calculateStreakFromDates(dates, toLocalDateString(new Date().toISOString(), timezone));
 }
 
 /**
@@ -135,6 +132,16 @@ export async function getYesterdayGroupRecap(groupId: string): Promise<GroupReca
   const groupCreatedDate = format(parseISO(group.created_at), 'yyyy-MM-dd');
   if (groupCreatedDate >= yesterday) {
     return { date: yesterday, total_members: 0, completions: [] };
+  }
+
+  // No recap for a rest day: nobody had anything to read. If the check fails
+  // (for example before its migration is applied), show the recap as usual.
+  const { data: hadReading } = await supabase.rpc('group_has_reading', {
+    p_group_id: groupId,
+    p_date: yesterday,
+  });
+  if (hadReading === false) {
+    return { date: yesterday, total_members: 0, completions: [], rest_day: true };
   }
 
   // Get active members who joined before yesterday (new members excluded from recap)

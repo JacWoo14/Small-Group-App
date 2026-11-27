@@ -86,8 +86,25 @@ Deno.serve(async (_req) => {
   // -------------------------------------------------------------------
   const readingsPerUser = await Promise.all(
     targetUsers.map(async (user) => {
-      const { data } = await supabase.rpc('get_all_todays_readings', { user_uuid: user.id });
-      return { user, readings: (data || []) as any[] };
+      const tz = VALID_TIMEZONES.has(user.timezone) ? user.timezone : 'UTC';
+      const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
+      const [{ data }, { data: behindData }] = await Promise.all([
+        supabase.rpc('get_all_todays_readings', { user_uuid: user.id, p_date: localDate }),
+        supabase.rpc('get_days_behind', { user_uuid: user.id, p_date: localDate }),
+      ]);
+      const daysBehindByGroup = new Map<string, number>();
+      for (const row of (behindData || []) as any[]) {
+        daysBehindByGroup.set(row.group_id, row.days_behind);
+      }
+      const yesterday = new Date(`${localDate}T00:00:00Z`);
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      return {
+        user,
+        readings: (data || []) as any[],
+        daysBehindByGroup,
+        localDate,
+        yesterdayStr: yesterday.toISOString().slice(0, 10),
+      };
     })
   );
 
@@ -104,27 +121,41 @@ Deno.serve(async (_req) => {
     return new Response(JSON.stringify({ sent: 0 }), { status: 200 });
   }
 
-  // UTC yesterday for completion counts (users near midnight may see ±1 day off — acceptable for a display count)
-  const utcYesterday = new Date(now);
-  utcYesterday.setUTCDate(utcYesterday.getUTCDate() - 1);
-  const yesterdayStr = utcYesterday.toISOString().slice(0, 10);
+  // "Yesterday" is each user's local yesterday, so there can be more than one
+  const yesterdays = [...new Set(readingsPerUser.map((r) => r.yesterdayStr))];
+  const planIds = [
+    ...new Set(
+      readingsPerUser.flatMap(({ readings }) => readings.map((r) => r.group_reading_plan_id as string))
+    ),
+  ];
 
-  const [{ data: completionRows }, { data: memberRows }] = await Promise.all([
+  const [{ data: completionRows }, { data: memberRows }, { data: scheduledRows }] = await Promise.all([
     supabase
       .from('reading_completions')
-      .select('group_id, user_id')
+      .select('group_id, user_id, reading_date')
       .in('group_id', allGroupIds)
-      .eq('reading_date', yesterdayStr),
+      .in('reading_date', yesterdays),
     supabase
       .from('group_members')
       .select('group_id, user_id')
       .in('group_id', allGroupIds)
       .eq('is_active', true),
+    supabase
+      .from('plan_readings')
+      .select('plan_id, scheduled_date')
+      .in('plan_id', planIds)
+      .in('scheduled_date', yesterdays),
   ]);
+
+  // Plans that actually had a reading on a given date (rest days do not)
+  const scheduled = new Set(
+    (scheduledRows || []).map((r) => `${r.plan_id}|${r.scheduled_date}`)
+  );
 
   const completionsByGroup = new Map<string, number>();
   for (const row of completionRows || []) {
-    completionsByGroup.set(row.group_id, (completionsByGroup.get(row.group_id) ?? 0) + 1);
+    const key = `${row.group_id}|${row.reading_date}`;
+    completionsByGroup.set(key, (completionsByGroup.get(key) ?? 0) + 1);
   }
   const membersByGroup = new Map<string, number>();
   for (const row of memberRows || []) {
@@ -138,27 +169,24 @@ Deno.serve(async (_req) => {
   const messages: (PushMessage & { userId: string })[] = [];
   const invalidUserIds: string[] = [];
 
-  for (const { user, readings } of readingsPerUser) {
+  for (const { user, readings, daysBehindByGroup, localDate, yesterdayStr } of readingsPerUser) {
     if (readings.length === 0) continue;
 
-    const tz = VALID_TIMEZONES.has(user.timezone) ? user.timezone : 'UTC';
-    const localDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
-
     // Deduplicate by group (RPC may return multiple rows per group)
-    const groupsSeen = new Map<string, { name: string; passages: string[] }>();
+    const groupsSeen = new Map<string, { name: string; planId: string; passages: string[] }>();
     for (const row of readings) {
       if (!groupsSeen.has(row.group_id)) {
         const passages = Array.isArray(row.passages) ? row.passages : [];
         if (passages.length > 0) {
-          groupsSeen.set(row.group_id, { name: row.group_name, passages });
+          groupsSeen.set(row.group_id, { name: row.group_name, planId: row.group_reading_plan_id, passages });
         }
       }
     }
 
     if (groupsSeen.size === 0) continue;
 
-    for (const [groupId, { name, passages }] of groupsSeen) {
-      const completedCount = completionsByGroup.get(groupId) ?? 0;
+    for (const [groupId, { name, planId, passages }] of groupsSeen) {
+      const completedCount = completionsByGroup.get(`${groupId}|${yesterdayStr}`) ?? 0;
       const memberCount = membersByGroup.get(groupId) ?? 0;
 
       const safeName = sanitize(name, MAX_GROUP_NAME_LEN);
@@ -166,7 +194,11 @@ Deno.serve(async (_req) => {
       const passageText = safePassage + (passages.length > 1 ? ` +${passages.length - 1}` : '');
 
       let body = passageText;
-      if (memberCount > 1) {
+      const daysBehind = daysBehindByGroup.get(groupId) ?? 0;
+      if (daysBehind > 0) {
+        body += ` (${daysBehind} ${daysBehind === 1 ? 'day' : 'days'} behind)`;
+      }
+      if (memberCount > 1 && scheduled.has(`${planId}|${yesterdayStr}`)) {
         body += ` · Yesterday: ${completedCount}/${memberCount}`;
       }
 
@@ -175,7 +207,7 @@ Deno.serve(async (_req) => {
         userId: user.id,
         title: `📖 ${safeName}`,
         body,
-        data: { type: 'daily_reminder', date: localDateStr, group_id: groupId },
+        data: { type: 'daily_reminder', date: localDate, group_id: groupId },
       });
     }
   }

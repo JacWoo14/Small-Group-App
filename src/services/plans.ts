@@ -109,6 +109,22 @@ export async function importReadingPlan(
   readings: ParsedReading[],
   createdBy: string
 ): Promise<ReadingPlan> {
+  return createReadingPlan(
+    name,
+    readings.map((r) => ({ scheduled_date: r.scheduled_date, passages: [r.passage] })),
+    createdBy
+  );
+}
+
+/**
+ * Save a plan whose days may hold several passages (imports and the plan
+ * creator share this).
+ */
+export async function createReadingPlan(
+  name: string,
+  readings: { scheduled_date: string; passages: string[] }[],
+  createdBy: string
+): Promise<ReadingPlan> {
   const { data: plan, error: planError } = await supabase
     .from('reading_plans')
     .insert({
@@ -132,7 +148,7 @@ export async function importReadingPlan(
   const planReadings = readings.map((r) => ({
     plan_id: plan.id,
     scheduled_date: r.scheduled_date,
-    passages: [r.passage],
+    passages: r.passages,
   }));
 
   const { error: readingsError } = await supabase

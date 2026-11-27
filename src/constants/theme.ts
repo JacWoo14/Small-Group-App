@@ -13,6 +13,7 @@ export const Colors = {
   parchment: '#F5F1E8',
   lightParchment: '#FAF8F3',
   white: '#FFFFFF',
+  screenBackground: '#f5f5f5',
 
   // Neutral colors
   stoneGray: '#8B7E6A',

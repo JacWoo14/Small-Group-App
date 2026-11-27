@@ -1,23 +1,26 @@
 // ─── Supabase client mock (for getUserStreak) ──────────────────────────────
-// calculateStreakFromDates / filterSameDayCompletions / toLocalDateString are
+// calculateStreakFromDates / getActivityDates / toLocalDateString are
 // pure and need no mock; getUserStreak wraps a Supabase query and is tested
 // below with a mocked client, matching the pattern in completions.test.ts.
 
 const mockOrder = jest.fn();
 const mockEq = jest.fn(() => ({ order: mockOrder }));
 const mockSelect = jest.fn(() => ({ eq: mockEq }));
+const mockRpc = jest.fn();
 
 jest.mock('../services/supabase', () => ({
   supabase: {
     from: jest.fn(() => ({ select: mockSelect })),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
 import {
   calculateStreakFromDates,
-  filterSameDayCompletions,
+  getActivityDates,
   toLocalDateString,
   getUserStreak,
+  getYesterdayGroupRecap,
 } from '../services/stats';
 
 beforeEach(() => {
@@ -139,66 +142,54 @@ describe('toLocalDateString', () => {
   });
 });
 
-describe('filterSameDayCompletions', () => {
+describe('getActivityDates', () => {
   const TZ = 'America/Chicago';
 
-  it('counts a completion made on the same calendar day as reading_date', () => {
-    const rows = [{ reading_date: '2026-03-15', completed_at: '2026-03-15T18:00:00.000Z' }];
-    expect(filterSameDayCompletions(rows, TZ)).toEqual(['2026-03-15']);
+  it('returns the calendar day a completion was made on', () => {
+    const rows = [{ completed_at: '2026-03-15T18:00:00.000Z' }];
+    expect(getActivityDates(rows, TZ)).toEqual(['2026-03-15']);
   });
 
-  it('excludes a retroactively-backfilled completion (completed_at on a different day than reading_date)', () => {
-    // Regression: this is the exact "backfill inflates streak" bug reported —
-    // a user marks 2026-03-01 complete today (2026-03-15); it must not count.
-    const rows = [{ reading_date: '2026-03-01', completed_at: '2026-03-15T18:00:00.000Z' }];
-    expect(filterSameDayCompletions(rows, TZ)).toEqual([]);
-  });
-
-  it('counts a date if ANY group completion for that date was same-day, even if another was backfilled', () => {
-    const rows = [
-      { reading_date: '2026-03-10', completed_at: '2026-03-15T18:00:00.000Z' }, // backfilled, group A
-      { reading_date: '2026-03-10', completed_at: '2026-03-10T18:00:00.000Z' }, // same-day, group B
-    ];
-    expect(filterSameDayCompletions(rows, TZ)).toEqual(['2026-03-10']);
+  it('uses the user timezone to decide the activity day', () => {
+    // 02:00Z on 03-15 is still the evening of 03-14 in Chicago
+    expect(getActivityDates([{ completed_at: '2026-03-15T02:00:00.000Z' }], TZ)).toEqual(['2026-03-14']);
   });
 
   it('excludes rows with a null completed_at instead of throwing', () => {
-    const rows = [{ reading_date: '2026-03-15', completed_at: null }];
-    expect(filterSameDayCompletions(rows, TZ)).toEqual([]);
+    expect(getActivityDates([{ completed_at: null }], TZ)).toEqual([]);
   });
 
-  it('deduplicates when multiple same-day groups share a reading_date', () => {
+  it('deduplicates multiple completions on the same day', () => {
     const rows = [
-      { reading_date: '2026-03-15', completed_at: '2026-03-15T14:00:00.000Z' },
-      { reading_date: '2026-03-15', completed_at: '2026-03-15T15:00:00.000Z' },
+      { completed_at: '2026-03-15T14:00:00.000Z' },
+      { completed_at: '2026-03-15T15:00:00.000Z' },
     ];
-    expect(filterSameDayCompletions(rows, TZ)).toEqual(['2026-03-15']);
+    expect(getActivityDates(rows, TZ)).toEqual(['2026-03-15']);
   });
 
-  it('a mass-backfill session only credits the one day actually completed today, not all 10', () => {
-    // The exact scenario from the bug report: sitting down today and
-    // checking off the last 10 days in one sitting must not read as a
-    // 10-day streak — only today (genuinely completed today) counts.
-    const rows = [
-      '2026-03-06', '2026-03-07', '2026-03-08', '2026-03-09', '2026-03-10',
-      '2026-03-11', '2026-03-12', '2026-03-13', '2026-03-14', '2026-03-15',
-    ].map((reading_date) => ({ reading_date, completed_at: '2026-03-15T18:00:00.000Z' }));
+  it('a mass-backfill session only credits the one day it happened, not all 10', () => {
+    const rows = Array.from({ length: 10 }, () => ({ completed_at: '2026-03-15T18:00:00.000Z' }));
+    const days = getActivityDates(rows, TZ);
+    expect(days).toEqual(['2026-03-15']);
+    expect(calculateStreakFromDates(days, '2026-03-15')).toEqual({ current: 1, longest: 1 });
+  });
 
-    const validDates = filterSameDayCompletions(rows, TZ);
-    expect(validDates).toEqual(['2026-03-15']);
-    expect(calculateStreakFromDates(validDates, '2026-03-15')).toEqual({ current: 1, longest: 1 });
+  it('keeps a streak alive for a user who is always one day behind', () => {
+    // Reads a day late every day: reading_dates lag, completed_at is daily.
+    const rows = ['12', '13', '14', '15'].map((d) => ({ completed_at: `2026-03-${d}T18:00:00.000Z` }));
+    expect(calculateStreakFromDates(getActivityDates(rows, TZ), '2026-03-15')).toEqual({ current: 4, longest: 4 });
   });
 });
 
 describe('getUserStreak', () => {
-  it('queries reading_date and completed_at for the given user, ordered descending', async () => {
+  it('queries completed_at for the given user, ordered descending', async () => {
     mockOrder.mockResolvedValue({ data: [], error: null });
 
     await getUserStreak('user-1', 'UTC');
 
-    expect(mockSelect).toHaveBeenCalledWith('reading_date, completed_at');
+    expect(mockSelect).toHaveBeenCalledWith('completed_at');
     expect(mockEq).toHaveBeenCalledWith('user_id', 'user-1');
-    expect(mockOrder).toHaveBeenCalledWith('reading_date', { ascending: false });
+    expect(mockOrder).toHaveBeenCalledWith('completed_at', { ascending: false });
   });
 
   it('returns zeros when there are no completion rows', async () => {
@@ -219,33 +210,36 @@ describe('getUserStreak', () => {
     await expect(getUserStreak('user-1', 'UTC')).rejects.toEqual({ message: 'connection reset' });
   });
 
-  it('excludes backfilled rows before computing the streak (timezone-aware end-to-end)', async () => {
-    // Regression: getUserStreak now threads `timezone` through to
-    // filterSameDayCompletions — a same-day completion just after UTC
-    // midnight in a negative-offset timezone must still count as "today"
-    // relative to that timezone, and a retroactive backfill must not.
+  it('counts recent completions toward the streak using the user timezone', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-15T18:00:00.000Z'));
     mockOrder.mockResolvedValue({
       data: [
-        { reading_date: '2026-03-15', completed_at: '2026-03-15T02:00:00.000Z' }, // 2026-03-14 evening in Chicago — same-day for that reading_date? No: reading_date 03-15 vs local 03-14 -> excluded
-        { reading_date: '2026-03-01', completed_at: '2026-03-15T18:00:00.000Z' }, // backfilled, excluded
+        { completed_at: '2026-03-15T17:00:00.000Z' },
+        { completed_at: '2026-03-14T17:00:00.000Z' },
       ],
       error: null,
     });
 
     const result = await getUserStreak('user-1', 'America/Chicago');
+    jest.useRealTimers();
 
-    expect(result).toEqual({ current: 0, longest: 0 });
+    expect(result).toEqual({ current: 2, longest: 2 });
   });
+});
 
-  it('counts a genuinely same-day completion toward the streak', async () => {
-    mockOrder.mockResolvedValue({
-      data: [{ reading_date: '2026-03-15', completed_at: '2026-03-15T18:00:00.000Z' }],
-      error: null,
+describe('getYesterdayGroupRecap', () => {
+  it('returns an empty rest-day recap when yesterday had no reading', async () => {
+    const single = jest.fn().mockResolvedValue({ data: { created_at: '2020-01-01T00:00:00Z' }, error: null });
+    mockEq.mockReturnValue({ single } as any);
+    mockRpc.mockResolvedValue({ data: false, error: null });
+
+    const recap = await getYesterdayGroupRecap('group-1');
+
+    expect(recap.rest_day).toBe(true);
+    expect(recap.completions).toEqual([]);
+    expect(mockRpc).toHaveBeenCalledWith('group_has_reading', {
+      p_group_id: 'group-1',
+      p_date: recap.date,
     });
-
-    const result = await getUserStreak('user-1', 'America/Chicago');
-
-    expect(result.current).toBeGreaterThanOrEqual(0);
-    expect(result.longest).toBe(1);
   });
 });

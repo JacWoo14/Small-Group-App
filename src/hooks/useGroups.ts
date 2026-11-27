@@ -14,7 +14,7 @@ import {
   transferGroupOwnership,
 } from '../services/groups';
 import { getTodaysReadings, markComplete } from '../services/completions';
-import { importReadingPlan, ParsedReading } from '../services/plans';
+import { createReadingPlan, importReadingPlan, ParsedReading } from '../services/plans';
 import { getPlanTemplates, getTemplatePreview, instantiateTemplate } from '../services/planTemplates';
 
 export function useUserGroups() {
@@ -165,6 +165,19 @@ export function useImportPlan() {
   return useMutation({
     mutationFn: (params: { name: string; readings: ParsedReading[] }) =>
       importReadingPlan(params.name, params.readings, user!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['readingPlans', user?.id] });
+    },
+  });
+}
+
+export function useCreatePlan() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: (params: { name: string; readings: { scheduled_date: string; passages: string[] }[] }) =>
+      createReadingPlan(params.name, params.readings, user!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['readingPlans', user?.id] });
     },

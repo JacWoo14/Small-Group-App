@@ -141,7 +141,7 @@ Custom-creation overhaul and outside-plan import — the `plan_templates` table 
 ### Streak calc uses stale signup-time timezone, not device-live timezone
 **What:** `getUserStreak` converts `completed_at` to local dates using `users.timezone` (captured once at signup), while `reading_date`/"today" throughout the app is derived from the device's live current timezone. The new same-day-only streak logic (this branch) compares the two.
 **Why:** Surfaced by /ship red-team review (2026-08-10). A user who signs up in one timezone then travels without re-onboarding could complete a reading on the correct calendar day but have it silently excluded from their streak, since the stored `users.timezone` and the device's live timezone disagree. Narrow edge case (active cross-timezone travel) for a small closed-group app — not blocking, but worth fixing properly rather than patching.
-**How:** Either refresh `users.timezone` on each login (e.g. in `handleProfileLoaded`) so it tracks the device's current zone, or unify the timezone source used by `filterSameDayCompletions` with the one used for `reading_date`/`todayString()` elsewhere.
+**How:** Either refresh `users.timezone` on each login (e.g. in `handleProfileLoaded`) so it tracks the device's current zone, or unify the timezone source used by `getActivityDates` with the one used for `reading_date`/`todayString()` elsewhere.
 **Effort:** S-M
 **Depends on:** Nothing
 

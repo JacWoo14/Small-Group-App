@@ -149,6 +149,7 @@ export interface TodayReading {
 
 export interface GroupRecap {
   date: string; // Which date this recap is for
+  rest_day?: boolean; // the plan had no reading that date
   total_members: number;
   completions: {
     user_id: string;
@@ -252,4 +253,5 @@ export type PlanStackParamList = {
   CreateGroup: { isPersonal?: boolean; preselectedPlanId?: string } | undefined;
   JoinGroup: undefined;
   ImportPlan: { groupId?: string; isPersonal?: boolean };
+  CreatePlan: { isPersonal: boolean };
 };
