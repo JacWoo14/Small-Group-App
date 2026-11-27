@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,17 @@ export default function CreateGroupScreen() {
   const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null);
 
   const selectedPlan = (plans || []).find((p) => p.id === selectedPlanId) || null;
+
+  // Arriving with a plan (just built, imported or picked) shows only that plan,
+  // so the start button is on screen; the full list is one tap away.
+  const [showAllPlans, setShowAllPlans] = useState(false);
+  useEffect(() => {
+    if (!preselectedPlanId) return;
+    setSelectedPlanId(preselectedPlanId);
+    setShowAllPlans(false);
+  }, [preselectedPlanId]);
+  const isCollapsed = !!preselectedPlanId && !showAllPlans && !!selectedPlan;
+  const visiblePlans = isCollapsed ? [selectedPlan] : plans || [];
 
   async function handleCreate() {
     if (!isPersonal && !name.trim()) {
@@ -128,7 +139,7 @@ export default function CreateGroupScreen() {
             No default plans are available yet — try "My Own Plan" instead.
           </Text>
         ) : (
-          (plans || []).map((plan: ReadingPlan) => (
+          visiblePlans.map((plan: ReadingPlan) => (
             <TouchableOpacity
               key={plan.id}
               onPress={() => setSelectedPlanId(plan.id)}
@@ -151,6 +162,12 @@ export default function CreateGroupScreen() {
               </Text>
             </TouchableOpacity>
           ))
+        )}
+
+        {isCollapsed && (
+          <TouchableOpacity onPress={() => setShowAllPlans(true)} style={styles.importLink}>
+            <Text style={[styles.importLinkText, { color: theme.primary }]}>Choose a different plan</Text>
+          </TouchableOpacity>
         )}
 
         <TouchableOpacity
