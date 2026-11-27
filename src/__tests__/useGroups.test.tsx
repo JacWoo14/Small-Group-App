@@ -26,8 +26,10 @@ jest.mock('../services/completions', () => ({
 }));
 
 const mockDismissTodayNotification = jest.fn();
+const mockCancelReadingReminder = jest.fn();
 jest.mock('../services/notifications', () => ({
   dismissTodayNotification: (...args: any[]) => mockDismissTodayNotification(...args),
+  cancelReadingReminder: (...args: any[]) => mockCancelReadingReminder(...args),
 }));
 
 const mockCaptureException = jest.fn();
@@ -54,6 +56,7 @@ beforeEach(() => {
   mockGetTodaysReadings.mockResolvedValue([]);
   mockMarkComplete.mockResolvedValue({ id: 'completion-1' });
   mockDismissTodayNotification.mockResolvedValue(undefined);
+  mockCancelReadingReminder.mockResolvedValue(undefined);
 });
 
 describe('useReadingsForDate', () => {
@@ -126,6 +129,31 @@ describe('useMarkComplete', () => {
     });
 
     expect(mockDismissTodayNotification).not.toHaveBeenCalled();
+    expect(mockCancelReadingReminder).not.toHaveBeenCalled();
+  });
+
+  it("cancels that group's pending reminder for today so a finished reading doesn't get nagged", async () => {
+    const { result } = renderHook(() => useMarkComplete(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ groupId: 'group-1', readingDate: TODAY });
+    });
+
+    expect(mockCancelReadingReminder).toHaveBeenCalledWith('group-1', TODAY);
+  });
+
+  it('reports a failure to cancel the pending reminder to Sentry', async () => {
+    mockCancelReadingReminder.mockRejectedValue(new Error('cancel failed'));
+    const { result } = renderHook(() => useMarkComplete(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ groupId: 'group-1', readingDate: TODAY });
+    });
+
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: expect.objectContaining({ context: 'cancel_reminder' }) })
+    );
   });
 
   it('calls markComplete with the authenticated user id, group, and date', async () => {

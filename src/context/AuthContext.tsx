@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 import * as Sentry from '@sentry/react-native';
 import { supabase } from '../services/supabase';
 import { ensureUserProfile } from '../services/auth';
-import { registerForPushNotifications } from '../services/notifications';
+import { cancelReadingReminders } from '../services/notifications';
 import { User } from '../types';
 
 type AuthContextType = {
@@ -25,19 +25,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
-  function handleProfileLoaded(profile: User | null, registerPush = false) {
+  function handleProfileLoaded(profile: User | null) {
     if (profile) {
       setUser(profile);
       setNeedsOnboarding(false);
-      if (registerPush) {
-        // Errors here (e.g. getExpoPushTokenAsync throwing due to a device
-        // push service misconfiguration) must be visible — this call was
-        // previously a silent no-op catch, which made Android push
-        // registration failures undiagnosable.
-        registerForPushNotifications(profile.id).catch((error) => {
-          Sentry.captureException(error, { tags: { context: 'push_registration' } });
-        });
-      }
     } else {
       setNeedsOnboarding(true);
     }
@@ -51,9 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        ensureUserProfile(session.user.id, session.user.email!).then(
-          (profile) => handleProfileLoaded(profile, true)
-        );
+        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
       } else {
         setLoading(false);
       }
@@ -77,16 +66,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes (login, logout, token refresh)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setAuthUser(session?.user ?? null);
 
       if (session?.user) {
-        ensureUserProfile(session.user.id, session.user.email!).then(
-          (profile) => handleProfileLoaded(profile, event === 'SIGNED_IN')
-        );
+        ensureUserProfile(session.user.id, session.user.email!).then(handleProfileLoaded);
       } else {
-        // User signed out
+        // User signed out — stop this device's reminders so they don't keep
+        // firing for (or at the time of) the previous account.
+        cancelReadingReminders().catch((error) => {
+          Sentry.captureException(error, { tags: { context: 'daily_reminder_cancel' } });
+        });
         setUser(null);
         setNeedsOnboarding(false);
         setLoading(false);

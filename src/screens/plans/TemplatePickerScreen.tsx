@@ -1,21 +1,15 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import { format } from 'date-fns';
 import { useTheme } from '../../context/ThemeContext';
-import { usePlanTemplates, useInstantiateTemplate } from '../../hooks/useGroups';
+import { usePlanTemplates, useTemplatePreview, useInstantiateTemplate } from '../../hooks/useGroups';
+import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { DatePicker } from '../../components/DatePicker';
 import { Colors, Typography, Spacing } from '../../constants/theme';
 import { PlanStackParamList, PlanTemplate } from '../../types';
-import { format } from 'date-fns';
 
 type Nav = NativeStackNavigationProp<PlanStackParamList, 'TemplatePicker'>;
 type RouteProps = NativeStackScreenProps<PlanStackParamList, 'TemplatePicker'>['route'];
@@ -28,82 +22,111 @@ export default function TemplatePickerScreen() {
   const { data: templates, isLoading } = usePlanTemplates();
   const instantiateTemplate = useInstantiateTemplate();
 
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [startDate, setStartDate] = useState(new Date());
+  const { data: preview, isLoading: previewLoading } = useTemplatePreview(selectedId);
 
-  async function handleContinue() {
-    if (!selectedTemplateId) {
-      Alert.alert('Error', 'Please select a plan');
-      return;
-    }
-
+  async function handleContinue(template: PlanTemplate) {
     try {
       const plan = await instantiateTemplate.mutateAsync({
-        templateId: selectedTemplateId,
+        templateId: template.id,
         startDate: format(startDate, 'yyyy-MM-dd'),
       });
       navigation.navigate('CreateGroup', { isPersonal, preselectedPlanId: plan.id });
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to start plan');
+      if (error.code === '23505') {
+        Alert.alert(
+          'Plan already exists',
+          `You already have a plan named "${template.name}". Please rename or remove it first.`
+        );
+      } else {
+        Alert.alert('Error', error.message || 'Failed to start this plan');
+      }
     }
   }
 
   if (isLoading) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.loadingText}>Loading plans...</Text>
+      <View style={styles.centered}>
+        <ActivityIndicator color={theme.primary} />
       </View>
     );
   }
 
+  if (!templates || templates.length === 0) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.loadingText}>No built-in plans are available yet.</Text>
+      </View>
+    );
+  }
+
+  const sorted = [...templates].sort((a, b) => a.total_days - b.total_days);
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.sectionLabel}>Choose a Plan</Text>
-        {(templates || []).length === 0 ? (
-          <Text style={styles.loadingText}>No default plans are available yet.</Text>
-        ) : (
-          (templates || []).map((template: PlanTemplate) => (
-            <TouchableOpacity
+        <Text style={styles.hint}>
+          Tap a plan to preview it, pick a start date, and continue.
+        </Text>
+
+        {sorted.map((template) => {
+          const isSelected = selectedId === template.id;
+          return (
+            <Card
               key={template.id}
-              onPress={() => setSelectedTemplateId(template.id)}
               style={[
-                styles.templateOption,
-                selectedTemplateId === template.id && {
-                  borderColor: theme.primary,
-                  backgroundColor: theme.selectedBackground,
-                },
+                styles.templateCard,
+                isSelected && { borderColor: theme.primary, backgroundColor: theme.selectedBackground },
               ]}
             >
-              <Text
-                style={[
-                  styles.templateName,
-                  selectedTemplateId === template.id && { color: theme.primary },
-                ]}
+              <TouchableOpacity
+                onPress={() => setSelectedId(isSelected ? null : template.id)}
+                activeOpacity={0.7}
               >
-                {template.name}
-              </Text>
-              <Text style={styles.templateDescription}>
-                {template.total_days} days
-                {template.description ? ` - ${template.description}` : ''}
-              </Text>
-            </TouchableOpacity>
-          ))
-        )}
+                <View style={styles.templateHeader}>
+                  <Text style={[styles.templateName, isSelected && { color: theme.primary }]}>
+                    {template.name}
+                  </Text>
+                  {template.category && (
+                    <View style={[styles.categoryBadge, { backgroundColor: theme.selectedBackground }]}>
+                      <Text style={[styles.categoryText, { color: theme.primary }]}>
+                        {template.category}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.templateDays}>{template.total_days} days</Text>
+                {template.description && (
+                  <Text style={styles.templateDescription}>{template.description}</Text>
+                )}
+              </TouchableOpacity>
 
-        {selectedTemplateId && (
-          <DatePicker
-            label="Start Date"
-            value={startDate}
-            onChange={setStartDate}
-          />
-        )}
+              {isSelected && (
+                <View style={styles.selectedSection}>
+                  {previewLoading ? (
+                    <ActivityIndicator color={theme.primary} style={styles.previewLoading} />
+                  ) : (
+                    (preview || []).map((r) => (
+                      <View key={r.day_number} style={styles.previewRow}>
+                        <Text style={styles.previewDay}>Day {r.day_number}</Text>
+                        <Text style={styles.previewPassage}>{r.passages.join(', ')}</Text>
+                      </View>
+                    ))
+                  )}
 
-        <Button
-          title="Continue"
-          onPress={handleContinue}
-          loading={instantiateTemplate.isPending}
-        />
+                  <DatePicker label="Start Date" value={startDate} onChange={setStartDate} />
+
+                  <Button
+                    title="Continue"
+                    onPress={() => handleContinue(template)}
+                    loading={instantiateTemplate.isPending}
+                  />
+                </View>
+              )}
+            </Card>
+          );
+        })}
       </View>
     </ScrollView>
   );
@@ -117,32 +140,78 @@ const styles = StyleSheet.create({
   content: {
     padding: Spacing.lg,
   },
-  sectionLabel: {
-    ...Typography.label,
-    color: Colors.text,
-    marginBottom: Spacing.sm,
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+    backgroundColor: '#f5f5f5',
   },
   loadingText: {
     ...Typography.body,
     color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  hint: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
     marginBottom: Spacing.md,
   },
-  templateOption: {
-    backgroundColor: Colors.white,
-    borderRadius: 8,
-    padding: Spacing.md,
+  templateCard: {
     marginBottom: Spacing.sm,
     borderWidth: 2,
     borderColor: Colors.border,
+  },
+  templateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
   },
   templateName: {
     ...Typography.body,
     fontWeight: '600',
     color: Colors.text,
+    flex: 1,
+  },
+  categoryBadge: {
+    borderRadius: 999,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+  },
+  categoryText: {
+    ...Typography.caption,
+    fontWeight: '600',
+  },
+  templateDays: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
   templateDescription: {
     ...Typography.caption,
     color: Colors.textSecondary,
-    marginTop: 2,
+    marginTop: Spacing.xs,
+  },
+  selectedSection: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  previewLoading: {
+    marginBottom: Spacing.sm,
+  },
+  previewRow: {
+    marginBottom: Spacing.xs,
+  },
+  previewDay: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  previewPassage: {
+    ...Typography.body,
+    color: Colors.text,
   },
 });

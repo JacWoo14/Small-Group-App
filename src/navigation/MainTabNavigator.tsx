@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Colors } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
+import { useReminderSync } from '../hooks/useReminderSync';
 import TodayScreen from '../screens/TodayScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 import SettingsScreen from '../screens/SettingsScreen';
@@ -14,6 +15,7 @@ type IconProps = { color: string; size: number };
 
 export default function MainTabNavigator() {
   const { theme } = useTheme();
+  useReminderSync();
 
   return (
     <Tab.Navigator

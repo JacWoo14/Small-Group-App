@@ -1,7 +1,10 @@
 // Supabase Edge Function: send-daily-reminders
 // Schedule: */15 * * * * (every 15 minutes via Supabase dashboard cron)
 // Auth: set CRON_SECRET env var in Supabase dashboard; pass as Authorization: Bearer <secret>
-// Deploy: supabase functions deploy send-daily-reminders
+// Deploy: supabase functions deploy send-daily-reminders --no-verify-jwt
+//   (--no-verify-jwt is required: CRON_SECRET is not a JWT, so Supabase's gateway
+//   rejects the cron request with 401 UNAUTHORIZED_INVALID_JWT_FORMAT before this
+//   code runs. The CRON_SECRET check below is this function's auth.)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 

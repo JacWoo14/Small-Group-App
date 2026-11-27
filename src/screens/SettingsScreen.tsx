@@ -4,7 +4,8 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { updateNotificationTime, signOut } from '../services/auth';
-import { getNotificationPermissionStatus, registerForPushNotifications } from '../services/notifications';
+import { getNotificationPermissionStatus, scheduleReadingReminders } from '../services/notifications';
+import { getUpcomingReminders } from '../services/reminders';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { TimePicker } from '../components/TimePicker';
@@ -26,7 +27,8 @@ export default function SettingsScreen() {
     if (!user) return;
     setLoading(true);
     try {
-      await registerForPushNotifications(user.id);
+      const reminders = await getUpcomingReminders(user.id, user.timezone);
+      await scheduleReadingReminders(user.preferred_notification_time, reminders);
       const status = await getNotificationPermissionStatus();
       setPermissionStatus(status);
       if (status !== 'granted') {
@@ -35,8 +37,8 @@ export default function SettingsScreen() {
           'Please enable notifications in your device settings.'
         );
       }
-    } catch {
-      // Ignore — token save failures are non-critical
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to turn on reminders');
     } finally {
       setLoading(false);
     }
@@ -60,13 +62,22 @@ export default function SettingsScreen() {
 
       await updateNotificationTime(user.id, timeString);
 
-      // Update local state
+      // Update local state; useReminderSync reschedules the reminders from this.
       setUser({
         ...user,
         preferred_notification_time: timeString,
       });
 
-      Alert.alert('Success', 'Notification time updated!');
+      const status = await getNotificationPermissionStatus();
+      setPermissionStatus(status);
+      if (status === 'granted') {
+        Alert.alert('Success', 'Notification time updated!');
+      } else {
+        Alert.alert(
+          'Time saved',
+          'Reminders are off because notifications are not allowed for this app. Enable them in your device settings.'
+        );
+      }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to update time');
     } finally {

@@ -6,16 +6,32 @@ Work items deferred from plan reviews. Use this as the source of truth for upcom
 
 ## P0 — Run immediately after merge
 
-### Run IDOR-fix migrations against production Supabase
-**What:** Run `supabase/migrations/20260616_get_all_todays_readings_add_date_param.sql` and `supabase/migrations/20260718_fix_get_all_todays_readings_idor.sql` against the live database via the Supabase SQL Editor (this repo applies migrations manually, no automated runner).
-**Why:** Surfaced by /ship adversarial review (2026-08-10). Until these run, `get_all_todays_readings` (SECURITY DEFINER) trusts the caller-supplied `user_uuid` with no check that it matches the authenticated caller — any authenticated user could pass another user's UUID and read their group names, invite codes, reading plans, and completion status. "Merged to main" does not mean "deployed" for this repo's manual-migration workflow.
-**How:** Supabase Dashboard → SQL Editor → run both files in order. Verify with a quick probe: authenticate as user A, call the RPC with user B's UUID, confirm zero rows returned.
-**Effort:** XS (a few minutes)
-**Depends on:** Nothing — do this first, before anything else in this release
+### ~~Run IDOR-fix migrations against production Supabase~~ — ✅ Done (2026-09-20)
+Confirmed via `pg_get_functiondef` on `get_all_todays_readings` in the SQL Editor: both the `p_date` parameter (from `20260616_get_all_todays_readings_add_date_param.sql`) and the `(user_uuid = auth.uid() OR auth.role() = 'service_role')` check (from `20260718_fix_get_all_todays_readings_idor.sql`) are present in the deployed function. The caller-supplied-UUID IDOR is fixed in production.
+
+### ~~Run stale-seed-plan-removal migration against production Supabase~~ — ✅ Done (2026-09-20)
+Ran `supabase/migrations/20260919_remove_stale_seed_reading_plans.sql` successfully. Deleted the 4 leftover pre-migration seed plans ("30-Day Psalms", "7-Day Gospels Sampler", "90-Day New Testament", "One Year Bible" — broken `scheduled_date: null` data superseded by `plan_templates`) plus the one group that referenced one of them, confirmed by the app owner to be their own test group, not a real user.
+
+### ~~Run plan_templates dedupe migration against production Supabase~~ — ✅ Done (2026-09-20)
+Ran `supabase/migrations/20260920_dedupe_plan_templates.sql` successfully. Removed the duplicate rows caused by re-running `20260920_seed_plan_templates_catalog.sql` more than once while iterating on catalog content, and added a `UNIQUE` constraint on `plan_templates.name` so a re-run can't silently duplicate again.
+
+### ~~Run seed-template removal migration against production Supabase~~ — ✅ Done (2026-10-04)
+Ran `supabase/migrations/20261004_remove_placeholder_plan_templates.sql` successfully. Removed the 5 single-book/sampler templates ("7-Day Introduction to Jesus", "Genesis in 50 Days", "Gospel of John", "Proverbs in a Month", "Psalms: The First 30") seeded by `20260919_seed_plan_templates.sql` before the sourced catalog. (They were first mislabeled as placeholder/test rows; they were a deliberate earlier seed. The old seed file is now marked superseded so it isn't re-run.) `plan_templates` now holds exactly the 8 intended catalog plans — confirmed complete (no partial inserts) via a `reading_rows` vs `total_days` audit before this ran.
 
 ---
 
 ## P1 — Must ship before real users onboard
+
+### Finish verifying on-device daily reminders (2026-10-30)
+**Update (2026-10-30), reminders show the reading and carry a "Mark complete" action:** each reminder is a one-shot notification per group per day for the next 14 days (title = group name, text = that day's passage(s)), with a "Mark complete" button that records that reminder's reading date for that group without opening the app. Readings come from the `get_all_todays_readings` RPC (one call per date); completed readings and empty days get no reminder, and marking a reading complete in the app cancels today's pending one. `useReminderSync` reschedules when groups, plans, or the time change, and rolls the window forward when the app comes to the foreground on a new day; the closed-app path is the `REMINDER-ACTION-TASK` background task (`src/services/reminderTask.ts`, needs `expo-task-manager`, so a native rebuild). Trade-off: reminders only reach 14 days ahead, so they stop if the app isn't opened for that long. Verified on the emulator: per-group alarm registered, legacy generic alarm cleaned up, action category and task registered, notification shows title + body + "Mark complete" button. **Button press verified with the app fully closed** (process killed, then pressed on the notification): the task started the app headlessly, recorded the completion for that group only (throwaway personal group showed "Completed ✓", Guy's Life Group untouched), and cleared the notification. First attempt silently did nothing: with the app closed the task payload carries the data as `content.dataString` (JSON), not `content.data`, so the group id was undefined; fixed by also reading `dataString` and the notification id, and a missing group id is now reported to Sentry instead of ignored. **Not yet verified:** the in-app listener path (app open) and a physical phone with a fresh EAS build (needs `expo-task-manager` natively). **Test data to clean up:** a throwaway personal group "Chronological Bible in a Year" (id `4f5ebc86-a20a-48d4-9412-92bfc07d951f`, with a completion for 2026-10-30) plus two private plan rows created while testing ("Navigators Bible Reading Plan", "Chronological Bible in a Year").
+**What:** Daily reminders fire locally via `scheduleDailyReminders` (`src/services/notifications.ts`), kept in sync by `useReminderSync`; cancelled on sign-out.
+**Verified on the Android emulator (2026-10-30):** an Expo alarm is registered at the saved time after app load; changing the time in Settings replaces it (one alarm, not two); with the app backgrounded the notification ("Today's reading") arrived about 40s after its 20:56:00 alarm and tapping it opens the app; the next day's alarm is queued after firing. **Not yet verified:** sign-out cancellation on a device (covered by a unit test only), and delivery on a physical phone with a fresh EAS preview build.
+**Open issue, delivery can be up to ~1 hour late:** the alarms are inexact (Android shows `window=+1h0m0s` for tomorrow's alarm), because the app doesn't hold the exact-alarm permission on Android 12+. The 40s lateness above was a near-term alarm; the steady-state daily alarm is queued ~24h ahead and gets the full 1h window. Options: declare `android.permission.SCHEDULE_EXACT_ALARM` in `app.json` and prompt the user to allow "Alarms & reminders" (needs a Play Store justification at submission), or accept up to an hour of slack for a daily reminder.
+**Why:** Server push never worked end to end. The cron's requests were rejected by the gateway's JWT check (401 `UNAUTHORIZED_INVALID_JWT_FORMAT`, fixed by turning off Verify JWT), and `users.push_token` was never populated (`has_token = false`). Local scheduling drops FCM credentials, the push token, the cron job, the edge function and the 15-minute window from the chain.
+**Known limits:** no "Yesterday: N/M" group stat (needs a server), reminders reach 14 days ahead, and delivery timing is inexact (above). Follow-ups are in CLAUDE.md "What's Not Built Yet".
+**Cleanup (optional):** the `send-daily-reminders` cron (job 5) still runs every 15 min but now sends nothing. Stop it with `SELECT cron.unschedule(5);`. If server push is ever revived, rotate `CRON_SECRET` first (it was pasted in a chat transcript) and redeploy with `--no-verify-jwt`.
+**Effort:** XS (verification only)
+**Depends on:** New EAS build
 
 ---
 
@@ -35,7 +51,7 @@ Work items deferred from plan reviews. Use this as the source of truth for upcom
 
 ---
 
-## Plans Tab + Default Reading Plan Templates (agreed 2026-09-19)
+## Plans Tab + Default Reading Plan Templates (agreed 2026-09-19) — ✅ Done (2026-09-20)
 
 Agreed after a planning session covering default reading plans, individual (non-group) use, and a Plans-tab IA rework. Phases are ordered by dependency.
 
@@ -83,20 +99,37 @@ Agreed after a planning session covering default reading plans, individual (non-
 **Effort:** S
 **Depends on:** New Plan decision-tree flow
 
-### Phase 3 — Default plan content & browsing — ✅ Done (2026-09-19)
+### Phase 3 — Default plan content & browsing — ✅ Done (2026-09-20)
 
-#### Curate initial template catalog
-**What:** 5 built-in plans seeded: Gospel of John (21 days), Proverbs in a Month (31), Psalms: The First 30, Genesis in 50 Days, and a 7-Day Introduction to Jesus sampler.
-**Why:** Kept to single-book sequential-chapter plans (chapter counts are simple, verifiable facts) plus one hand-picked sampler of universally well-known passages, rather than reproducing a full day-by-day table for a specific named historical plan (e.g. M'Cheyne's) from memory — that risked shipping inaccurate content under a real name. A properly-sourced named plan can be added later.
+#### Remove stale seed reading plans — ✅ Done (2026-09-20)
+Deleted the 4 leftover pre-migration `is_public=true` seed plans from `reading_plans`/`plan_readings` (`supabase/migrations/20260919_remove_stale_seed_reading_plans.sql`), plus the one test group that referenced one of them. They predated the date-first model (`scheduled_date` always null) and old-format `passages`, so any group on one had a permanently empty Today screen. Superseded by the template catalog below.
+
+#### Curate initial template catalog — ✅ Done (2026-09-20)
+**What:** `supabase/migrations/20260920_seed_plan_templates_catalog.sql` seeds 8 real, named, sourced plans (the original 4 computed/generic ones were replaced outright, not layered, since that draft never ran in prod):
+- **M'Cheyne Reading Plan** (365d) — 4 daily readings, OT once + NT/Psalms twice
+- **Chronological Bible in a Year** (365d) — scripture in historical order
+- **Navigators Bible Reading Plan** (300d) — formerly Discipleship Journal's, 4 tracks, 5-day/week with catch-up days
+- **Two Year Chronological** (730d) — OT weekdays / NT weekends
+- **A Chapter a Day: Bible in 3 Years** (1095d) — Celebration Church, stitched from 12 quarterly sub-plans
+- **Whole Bible in Under 2 Years** (683d) — Life.Church, OT chronological + daily NT passage, weekly reflection day
+- **The One Year Bible** (365d) — Tyndale House's classic branded plan, daily 4-way OT/NT/Psalms/Proverbs interleave
+- **The Bible Recap** (365d) — Tara-Leigh Cobble's chronological plan tied to her podcast/book
+
+**History:** Phase 3 first landed on 2026-09-19 (commit `cb53c98`, `20260919_seed_plan_templates.sql`) with 5 single-book/sampler templates: Gospel of John, Proverbs in a Month, Psalms: The First 30, Genesis in 50 Days, and a 7-Day Introduction to Jesus. They deliberately avoided named historical plans written from memory. Those 5 were later removed from production (`20261004_remove_placeholder_plan_templates.sql`) to keep the catalog to long-term/complex plans, and the sourced named plans above replaced them. That file is now superseded: re-running it would re-add the 5.
+**Why:** User feedback (2026-09-20): the original computed plans "were sort of already there in some flavor" (echoing the deleted stale seed data) and lacked real recognition. Re-sourced via background research agents and direct browser-driven fetches of live YouVersion/publisher schedules (citations only, no copied commentary) rather than reconstructing from memory — cross-checked against a second independent source where possible. Two research dead-ends handled without fabricating: Tim LaHaye's 3-year plan had no real day-by-day chart in its only free source (just pace descriptions + a blank journal template), so Celebration Church's plan was used instead; a background research agent got stuck making no progress on the Celebration Church fetch (9+ silent "still waiting" cycles with no file ever written) and was killed, then re-done directly via browser `fetch()` calls, which is also how the 3 later additions (Life.Church, Tyndale, Bible Recap) were fetched — faster and more controllable than delegating to another agent. Also decided: **the template catalog is scoped to long-term/complex plans only** — short, single-book, or simple plans stay in scope for custom plan creation (a separate, out-of-scope-for-this-epic feature), not the curated catalog.
+**How:** Run the migration file via the Supabase SQL Editor. Sanity-check afterward: `SELECT name, total_days, (SELECT COUNT(*) FROM plan_template_readings WHERE template_id = plan_templates.id) AS reading_rows FROM plan_templates;` — `reading_rows` should equal `total_days` for all 8 (365/365/300/730/1095/683/365/365).
 **Effort:** S-M (mostly content work, not engineering)
 **Depends on:** `plan_templates` tables
 
-#### Template picker UI
-**What:** `TemplatePickerScreen` replaces the flat list in `CreateGroupScreen` for the Default leaf — browse templates, pick a start date, continue into the existing name/create flow via `preselectedPlanId`.
+#### Template picker UI — ✅ Done (2026-09-20)
+**What:** New `TemplatePickerScreen` (`src/screens/plans/TemplatePickerScreen.tsx`), inserted into the New Plan flow between `ChoosePlanSource`'s "A Default Plan" option and `CreateGroupScreen`. Lists all 8 catalog templates (shortest to longest), each with a category badge; tapping a card expands it to preview the first 3 days via a new `getTemplatePreview` service fn / `useTemplatePreview` hook; "Start This Plan" calls `instantiateTemplate` and hands off to `CreateGroupScreen` with `preselectedPlanId` set, reusing the same pattern `ImportPlanScreen` already used for custom plans.
+**Why it wasn't just editing `CreateGroupScreen`'s existing list in place:** that screen's list is fed by `useAvailablePlans` (`reading_plans.is_public OR created_by=user`), which is the right data source for the final "confirm and name" step but not for template browsing — mirroring `ImportPlanScreen`'s existing "separate browse/prepare screen → land in CreateGroupScreen with a preselected plan" pattern kept both flows (custom paste, default catalog) architecturally consistent instead of overloading one screen with two data sources.
+**Merged with a parallel implementation (2026-10-04):** `main` had separately landed a simpler picker (single-select list plus a start-date `DatePicker`) from another session. The two were combined: sorted cards with category badges and the 3-day preview from this branch, plus `main`'s start-date choice. Selecting a card reveals the preview, the date picker, and Continue. `TemplatePicker` route params are `{ isPersonal: boolean }`.
+**Verified:** `npx tsc --noEmit` clean; confirmed rendering with real data in the Android Studio emulator (2026-09-20).
 **Effort:** M
 **Depends on:** Curated template catalog, New Plan decision-tree flow
 
-**Verified live end-to-end** on the emulator: browsed all 5 templates, instantiated three of them into real dated plans (confirmed via the duplicate-name guard correctly firing on repeat attempts), completed group creation, and confirmed the Today screen shows the correct day-1 reading ("Psalm 1") dated to the chosen start date.
+**Original implementation (2026-09-19) verified live end-to-end** on the emulator: browsed all 5 templates, instantiated three of them into real dated plans (confirmed via the duplicate-name guard correctly firing on repeat attempts), completed group creation, and confirmed the Today screen shows the correct day-1 reading ("Psalm 1") dated to the chosen start date.
 
 ### Explicitly out of scope for this epic
 Custom-creation overhaul and outside-plan import — the `plan_templates` table this epic builds is the intended foundation for both later (custom creation becomes "build your own template"; outside-plan import becomes "parse an external source into the same template shape").

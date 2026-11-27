@@ -1,3 +1,7 @@
+-- SUPERSEDED. Do not re-run: these 5 templates were removed from production by
+-- 20261004_remove_placeholder_plan_templates.sql, and re-running this would
+-- add them back. The live catalog is 20260920_seed_plan_templates_catalog.sql.
+--
 -- Seeds the initial default plan template catalog (Phase 3).
 --
 -- Content is deliberately kept to single-book sequential-chapter plans —
